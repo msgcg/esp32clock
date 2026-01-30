@@ -16,6 +16,9 @@ unsigned long lastIdleSwitch = 0;
 bool blinkNow = false;
 unsigned long blinkUntil = 0;
 
+int currentEyeR = 14;
+int currentPupilR = 5;
+int currentSpacing = 65;
 
 enum EyeEmotion {
   E_NEUTRAL, E_HAPPY, E_ANGRY, E_SLEEPY, E_SURPRISE,
@@ -230,12 +233,13 @@ void drawIOSElement(int x, int y, int w, int h, String text, bool selected) {
 
 void drawEyes() {
   int baseY = 42;
-  int spacing = random(55, 75);
+  // Убираем random(), используем глобальные переменные
+  int spacing = currentSpacing; 
   int x1 = (TFT_WIDTH - spacing) / 2;
   int x2 = x1 + spacing;
 
-  int eyeR = random(12, 16);
-  int pupilR = random(3, 6);
+  int eyeR = currentEyeR;
+  int pupilR = currentPupilR;
 
   int dx = 0, dy = 0;
   bool closed = blinkNow;
@@ -285,7 +289,7 @@ void drawClock() {
   if (hum < 30) drawSand();
 
 
-  if (isIdle && idleMode == IDLE_EYES) {
+  if (isIdle) {
       drawEyes();
   } else {
     canvas.setTextColor(currentTheme->accent);
@@ -464,9 +468,24 @@ void loop() {
       isIdle = true;
 
   // ----------------------------
-  // Смена эмоций каждые 3 сек
-  if (millis() - lastEmotionChange > 3000) {
-      currentEmotion = (EyeEmotion)random(E_NEUTRAL, E_LOOK_DOWN + 1); // 0..8
+  // Смена эмоций и параметров глаз
+  if (millis() - lastEmotionChange > 4000) {
+      // Пул эмоций с повышенным шансом на "милые"
+      EyeEmotion emotionsPool[] = {
+        E_NEUTRAL, E_NEUTRAL, // Нейтральные
+        E_HAPPY, E_HAPPY, E_HAPPY, // Счастливые (х3 шанс)
+        E_SURPRISE, // Удивление
+        E_LOOK_LEFT, E_LOOK_RIGHT, E_LOOK_UP, E_LOOK_DOWN, // Взгляд по сторонам
+        E_SLEEPY // Сонные
+        // E_ANGRY мы просто убрали из пула
+      };
+      currentEmotion = emotionsPool[random(sizeof(emotionsPool)/sizeof(EyeEmotion))];
+      
+      // Обновляем параметры глаз только при смене эмоции
+      currentEyeR = random(13, 16);
+      currentPupilR = random(4, 6);
+      currentSpacing = random(60, 70);
+
       lastEmotionChange = millis();
   }
 
@@ -507,11 +526,6 @@ void loop() {
     lastDraw = millis();
   }
 
-  // Переключение idle режима (глаза/цитата)
-  if (isIdle && millis() - lastIdleSwitch > IDLE_SWITCH_TIME) {
-      idleMode = (random(2) == 0) ? IDLE_EYES : IDLE_QUOTE;
-      lastIdleSwitch = millis();
-  }
 
   if (millis() - lastSensor > 3000) {
       temp = dht.readTemperature();
