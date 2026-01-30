@@ -8,6 +8,18 @@
 #include <DHT.h>
 #include "config.h"
 
+enum IdleMode { IDLE_EYES, IDLE_QUOTE };
+IdleMode idleMode = IDLE_EYES;
+unsigned long lastIdleSwitch = 0;
+#define IDLE_SWITCH_TIME 5000
+
+enum EyeEmotion {
+  E_NEUTRAL, E_HAPPY, E_ANGRY, E_SLEEPY, E_SURPRISE,
+  E_LOOK_LEFT, E_LOOK_RIGHT, E_LOOK_UP, E_LOOK_DOWN
+};
+EyeEmotion currentEmotion = E_NEUTRAL;
+unsigned long lastEmotionChange = 0;
+
 // --- Таймеры и состояния ---
 unsigned long lastActivity = 0;
 bool isIdle = false;
@@ -110,6 +122,37 @@ void toggleLamp() {
   lampState = !lampState;
   digitalWrite(PIN_RELAY, lampState ? HIGH : LOW);
   showPopup(lampState ? "Свет ВКЛ" : "Свет ВЫКЛ");
+}
+
+void updateThemeByEnv() {
+  int h = rtc.hour;
+
+  if (h >= 22 || h < 6) {
+    currentTheme = &thNight;
+    return;
+  }
+
+  if (temp > 28) {
+    currentTheme = &thAutumn; // жарко (рыжая)
+    return;
+  }
+
+  if (temp < 10) {
+    currentTheme = &thWinter;
+    return;
+  }
+
+  if (hum > 70) {
+    currentTheme = &thSpring; // влажно / дождь
+    return;
+  }
+
+  if (hum < 30) {
+    currentTheme = &thSummer; // сухо / песок
+    return;
+  }
+
+  currentTheme = &thSpring; // день
 }
 
 void updateTime() {
@@ -228,6 +271,51 @@ void drawQuotesScreen() {
   drawCenteredText(pY + 22, quotes[quoteIdx], FONT_TEXT);
 }
 
+void drawEyes() {
+  int baseY = 42;
+  int spacing = random(55, 75);
+  int x1 = (TFT_WIDTH - spacing) / 2;
+  int x2 = x1 + spacing;
+
+  int eyeR = random(12, 16);
+  int pupilR = random(3, 6);
+
+  int dx = 0, dy = 0;
+  bool closed = false;
+
+  switch (currentEmotion) {
+    case E_HAPPY: dy = -2; break;
+    case E_ANGRY: dy = 2; break;
+    case E_SLEEPY: closed = true; break;
+    case E_LOOK_LEFT: dx = -4; break;
+    case E_LOOK_RIGHT: dx = 4; break;
+    case E_LOOK_UP: dy = -4; break;
+    case E_LOOK_DOWN: dy = 4; break;
+    default: break;
+  }
+
+  canvas.fillCircle(x1, baseY, eyeR, ST7735_WHITE);
+  canvas.fillCircle(x2, baseY, eyeR, ST7735_WHITE);
+
+  if (!closed) {
+    canvas.fillCircle(x1 + dx, baseY + dy, pupilR, ST7735_BLACK);
+    canvas.fillCircle(x2 + dx, baseY + dy, pupilR, ST7735_BLACK);
+  } else {
+    canvas.drawFastHLine(x1 - eyeR/2, baseY, eyeR, ST7735_BLACK);
+    canvas.drawFastHLine(x2 - eyeR/2, baseY, eyeR, ST7735_BLACK);
+  }
+
+  if (currentEmotion == E_ANGRY) {
+    canvas.drawLine(x1 - eyeR, baseY - eyeR, x1 + eyeR, baseY - eyeR/2, ST7735_BLACK);
+    canvas.drawLine(x2 - eyeR, baseY - eyeR/2, x2 + eyeR, baseY - eyeR, ST7735_BLACK);
+  }
+
+  if (currentEmotion == E_HAPPY) {
+    canvas.drawCircle(x1, baseY + eyeR/2, eyeR/2, ST7735_BLACK);
+    canvas.drawCircle(x2, baseY + eyeR/2, eyeR/2, ST7735_BLACK);
+  }
+}
+
 // Универсальная функция обработки цифрового ввода
 void handleNumericInput(int& value, int maxVal, int digit) {
   unsigned long now = millis();
@@ -260,7 +348,14 @@ void handleIR() {
     currentMode = MODE_CLOCK; irrecv.resume(); return;
   }
   
-  if (isIdle) { isIdle = false; lastActivity = now; irrecv.resume(); return; }
+  if (isIdle) {
+  if (idleMode == IDLE_EYES) {
+    drawEyes();
+  } else {
+    drawQuotesScreen();
+  }
+}
+
   lastActivity = now;
 
   if (key == IR_BTN_RETURN || key == IR_BTN_CLOCK) { currentMode = MODE_CLOCK; irrecv.resume(); return; }
@@ -362,4 +457,23 @@ void loop() {
     tft.drawRGBBitmap(0, 0, canvas.getBuffer(), TFT_WIDTH, TFT_HEIGHT);
     lastDraw = millis();
   }
+  if (isIdle) {
+    if (millis() - lastIdleSwitch > IDLE_SWITCH_TIME) {
+      idleMode = (random(2) == 0) ? IDLE_EYES : IDLE_QUOTE;
+      lastIdleSwitch = millis();
+    }
+
+    if (millis() - lastEmotionChange > 3000) {
+      currentEmotion = (EyeEmotion)random(0, 9);
+      lastEmotionChange = millis();
+    }
+  }
+
+  if (millis() - lastSensor > 3000) {
+    temp = dht.readTemperature();
+    hum = dht.readHumidity();
+    updateThemeByEnv();
+    lastSensor = millis();
+  }
+
 }
