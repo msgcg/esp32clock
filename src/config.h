@@ -17,18 +17,18 @@
 #define PIN_BUZZER  7
 
 // --- IR Коды (Car MP3 пульт) ---
-#define IR_BTN_CH_MINUS 0xFFA25D  // CH-  вкл/выкл реле (лампа)
-#define IR_BTN_CH       0xFF629D  // CH   пробуждение из анимации
-#define IR_BTN_CH_PLUS  0xFFE21D  // CH+  показать рекомендации/цитаты
+#define IR_BTN_SUN 0xFFA25D  // CH-  вкл/выкл реле (лампа)
+#define IR_BTN_CLOCK       0xFF629D  
+#define IR_BTN_MESSAGE  0xFFE21D  // показать рекомендации/цитаты
 #define IR_BTN_PREV     0xFF22DD  // PREV листание меню
 #define IR_BTN_NEXT     0xFF02FD  // NEXT листание меню
-#define IR_BTN_PLAY     0xFFC23D  // PLAY/PAUSE
+#define IR_BTN_RETURN     0xFFC23D 
 #define IR_BTN_MINUS    0xFFE01F  // -    уменьшить значение
 #define IR_BTN_PLUS     0xFFA857  // +    увеличить значение
 #define IR_BTN_EQ       0xFF906F  // EQ   открыть главное меню
 #define IR_BTN_0        0xFF6897  // 0    ввод цифры
-#define IR_BTN_100PLUS  0xFF9867  // 100+ сброс всех будильников
-#define IR_BTN_200PLUS  0xFFB04F  // 200+ удалить ближайший будильник
+#define IR_BTN_OK  0xFF9867  // 100+
+#define IR_BTN_RESET  0xFFB04F  // 200+ 
 #define IR_BTN_1        0xFF30CF  // 1    ввод цифры
 #define IR_BTN_2        0xFF18E7  // 2    ввод цифры
 #define IR_BTN_3        0xFF7A85  // 3    ввод цифры
