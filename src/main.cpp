@@ -91,32 +91,31 @@ void resetAllAlarms() {
     showPopup("All alarms OFF");
 }
 
-void deleteNearestAlarm() {
-    // Найти ближайший будильник
-    int nearest = -1;
-    int minDiff = 1440; // максимум минут в дне
-    
-    for(int i = 0; i < MAX_ALARMS; i++) {
-        if(alarms[i].enabled) {
-            int alarmMin = alarms[i].hour * 60 + alarms[i].minute;
-            int currentMin = clockTime.hour * 60 + clockTime.minute;
-            int diff = alarmMin - currentMin;
-            if(diff < 0) diff += 1440;
-            
-            if(diff < minDiff) {
-                minDiff = diff;
-                nearest = i;
-            }
-        }
+void processMenuAction() {
+    // Выполнить действие выбранного пункта меню (срабатывает при нажатии 100+)
+    switch(menuCursor) {
+        case 0: // Alarms
+            currentMode = MODE_SETTINGS;
+            settingCursor = 0;
+            showPopup("Set alarm time");
+            break;
+        case 1: // Light
+            toggleLamp();
+            showPopup(lampState ? "Light ON" : "Light OFF");
+            break;
+        case 2: // Effects
+            currentMode = MODE_ANIMATION;
+            showPopup("Animation ON");
+            break;
+        case 3: // Quotes
+            currentMode = MODE_QUOTES;
+            quotePage = 0;
+            break;
+        case 4: // Sound
+            showPopup("Sound menu");
+            break;
     }
-    
-    if(nearest >= 0) {
-        alarms[nearest].enabled = false;
-        alarmCount--;
-        showPopup("Alarm deleted");
-    } else {
-        showPopup("No alarms");
-    }
+    currentMode = MODE_CLOCK;
 }
 
 void updateSensors() {
@@ -341,19 +340,24 @@ void handleIR() {
                 // Переключить между часами и анимацией
                 currentMode = (currentMode == MODE_CLOCK) ? MODE_ANIMATION : MODE_CLOCK;
             }
-            // Быстрая установка будильников
-            else if(key >= IR_BTN_1 && key <= IR_BTN_9) {
-                int digit = key - IR_BTN_1 + 1;
-                setAlarmShortcut(digit, 0);
+            // Быстрая установка будильников на 5, 7, 9 утра
+            else if(key == IR_BTN_5) {
+                setAlarmShortcut(5, 0);
             }
-            else if(key == IR_BTN_0) {
-                resetAllAlarms();
+            else if(key == IR_BTN_7) {
+                setAlarmShortcut(7, 0);
+            }
+            else if(key == IR_BTN_9) {
+                setAlarmShortcut(9, 0);
             }
             else if(key == IR_BTN_100PLUS) {
-                resetAllAlarms();
+                // 100+ - открыть меню
+                currentMode = MODE_MENU;
+                menuCursor = 0;
             }
             else if(key == IR_BTN_200PLUS) {
-                deleteNearestAlarm();
+                // 200+ - сброс всех будильников
+                resetAllAlarms();
             }
             break;
 
@@ -394,8 +398,12 @@ void handleIR() {
             break;
 
         case MODE_MENU:
-            if(key == IR_BTN_EQ) {
-                // Закрыть меню
+            if(key == IR_BTN_100PLUS) {
+                // 100+ - OK (выполнить действие меню)
+                processMenuAction();
+            }
+            else if(key == IR_BTN_EQ) {
+                // EQ - закрыть меню
                 currentMode = MODE_CLOCK;
             }
             else if(key == IR_BTN_PREV || key == IR_BTN_MINUS) {
