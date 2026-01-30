@@ -43,6 +43,7 @@ unsigned long lastDigitTime = 0;
 #include "fonts/FontsRus/FreeSansBold9.h"
 #include "fonts/FontsRus/FreeSans9.h"
 
+#define FONT_ALARM  &FreeSansBold14pt8b
 #define FONT_TIME   &FreeSansBold18pt8b
 #define FONT_HEADER &FreeSansBold9pt8b
 #define FONT_TEXT   &FreeSans9pt8b
@@ -563,7 +564,7 @@ void loop() {
       case MODE_QUOTES: drawQuotesScreen(); break;
       case MODE_RING:
         canvas.fillScreen((millis()/200)%2 ? RGB(100,0,0) : ST7735_BLACK);
-        canvas.setTextColor(ST7735_WHITE); drawCenteredText(50, "ПОДЪЁМ!", FONT_TIME);
+        canvas.setTextColor(ST7735_WHITE); drawCenteredText(50, "ПОДЪЁМ!", FONT_ALARM);
         break;
     }
 
