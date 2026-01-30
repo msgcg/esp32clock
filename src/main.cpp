@@ -38,11 +38,12 @@ int digitBuffer = -1;
 unsigned long lastDigitTime = 0;
 #define DIGIT_TIMEOUT 2000
 
+#include "fonts/FontsRus/FreeSansBold18.h"
 #include "fonts/FontsRus/FreeSansBold14.h"
 #include "fonts/FontsRus/FreeSansBold9.h"
 #include "fonts/FontsRus/FreeSans9.h"
 
-#define FONT_TIME   &FreeSansBold14pt8b
+#define FONT_TIME   &FreeSansBold18pt8b
 #define FONT_HEADER &FreeSansBold9pt8b
 #define FONT_TEXT   &FreeSans9pt8b
 
@@ -85,10 +86,27 @@ String popupMsg = "";
 long nextBlink = 0;
 
 const char* quotes[] = {
-  "Улыбнись!", "Удачи!", "Верь!", "Привет!",
-  "Сможешь!", "Действуй!", "Сияй!", "Успеха!",
-  "Отдохни", "Мечтай!", "Вперёд!", "Твой день!"
+  // Позитив и настроение
+  "Улыбнись!", "Хорошего дня!", "Ты супер!", "Сияй!", "Радуйся!", "Всё получится!",
+  "Ты чудо!", "Прекрасный день!", "Лови момент!", "Ты топ!", "Вдохновляй!",
+  
+  // Забота и отдых
+  "Время чая", "Отдохни", "Расслабься", "Люби", "Время для себя",
+  "Цени", "Не спеши", "Всё хорошо", "Глубокий вдох", "Минутка тишины",
+  
+  // Поддержка и мотивация
+  "Ты сможешь!", "Верь в себя!", "Только вперёд!", "Действуй!", "Маленький шаг",
+  "Не сдавайся!", "Всё возможно!", "Ты справишься!",
+  
+  // Тепло и уют
+  "Обнимаю", "С любовью", "Тепла и уюта", "Гармонии", "Радости!", "Счастья!",
+  "Мира в душе", "Добрые мысли", "Чудеса рядом",
+  
+  // Мечты и вдохновение
+  "Мечтай!", "Твори!", "Создавай!", "Живи!", "Просто будь!"
 };
+
+const int NUM_QUOTES = sizeof(quotes) / sizeof(char*);
 int quoteIdx = 0;
 unsigned long soundTimer = 0;
 bool isRinging = false;
@@ -428,7 +446,7 @@ void handleIR() {
   switch (currentMode) {
     case MODE_CLOCK:
       if (key == IR_BTN_EQ) { currentMode = MODE_MENU; menuCursor = 0; }
-      if (key == IR_BTN_MESSAGE) { currentMode = MODE_QUOTES; quoteIdx = random(12); }
+      if (key == IR_BTN_MESSAGE) { currentMode = MODE_QUOTES; quoteIdx = random(NUM_QUOTES); }
       break;
     case MODE_MENU:
       if (key == IR_BTN_PREV || key == IR_BTN_MINUS) menuCursor = (menuCursor + 3) % 4;
@@ -438,7 +456,7 @@ void handleIR() {
         if(menuCursor==0) { currentMode = MODE_SET_TIME; tempRtc = rtc; settingField = 0; }
         if(menuCursor==1) { currentMode = MODE_SET_ALARM; tempAlarm = singleAlarm; settingField = 0; }
         if(menuCursor==2) toggleLamp();
-        if(menuCursor==3) { currentMode = MODE_QUOTES; quoteIdx = random(12); }
+        if(menuCursor==3) { currentMode = MODE_QUOTES; quoteIdx = random(NUM_QUOTES); }
       }
       break;
     case MODE_SET_TIME:
