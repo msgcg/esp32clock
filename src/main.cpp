@@ -12,7 +12,12 @@
 unsigned long lastActivity = 0;
 bool isIdle = false;
 unsigned long lastKeyTime = 0;
-bool alarmSkipToday = false; // Флаг для пропуска срабатывания в момент установки
+bool alarmSkipToday = false; 
+
+// Для цифрового ввода
+int digitBuffer = -1; 
+unsigned long lastDigitTime = 0;
+#define DIGIT_TIMEOUT 2000
 
 #include "fonts/FontsRus/FreeSansBold14.h"
 #include "fonts/FontsRus/FreeSansBold9.h"
@@ -90,6 +95,15 @@ String utf8rus(String source) {
   return target;
 }
 
+int getDigit(unsigned long key) {
+  if (key == IR_BTN_0) return 0; if (key == IR_BTN_1) return 1;
+  if (key == IR_BTN_2) return 2; if (key == IR_BTN_3) return 3;
+  if (key == IR_BTN_4) return 4; if (key == IR_BTN_5) return 5;
+  if (key == IR_BTN_6) return 6; if (key == IR_BTN_7) return 7;
+  if (key == IR_BTN_8) return 8; if (key == IR_BTN_9) return 9;
+  return -1;
+}
+
 void showPopup(String msg) { popupMsg = msg; popupTimer = millis(); }
 
 void toggleLamp() {
@@ -116,13 +130,10 @@ void checkAlarm() {
   }
 }
 
-// Громкая трель для АКТИВНОГО бузера (без tone)
 void playBirdSong() {
   if (!isRinging) return;
-  unsigned long now = millis();
-  // Создаем агрессивный прерывистый сигнал
-  if (now - soundTimer > 60) { 
-    soundTimer = now;
+  if (millis() - soundTimer > 60) { 
+    soundTimer = millis();
     buzzerState = !buzzerState;
     digitalWrite(PIN_BUZZER, buzzerState ? HIGH : LOW);
   }
@@ -217,6 +228,26 @@ void drawQuotesScreen() {
   drawCenteredText(pY + 22, quotes[quoteIdx], FONT_TEXT);
 }
 
+// Универсальная функция обработки цифрового ввода
+void handleNumericInput(int& value, int maxVal, int digit) {
+  unsigned long now = millis();
+  if (digitBuffer != -1 && (now - lastDigitTime < DIGIT_TIMEOUT)) {
+    int newVal = digitBuffer * 10 + digit;
+    if (newVal < maxVal) {
+      value = newVal;
+      digitBuffer = -1; // Ввод завершен
+    } else {
+      // Если число слишком большое, считаем нажатую цифру за первую новую
+      value = digit;
+      digitBuffer = digit;
+    }
+  } else {
+    value = digit;
+    digitBuffer = digit;
+  }
+  lastDigitTime = now;
+}
+
 void handleIR() {
   if (!irrecv.decode(&results)) return;
   unsigned long key = results.value; unsigned long now = millis();
@@ -236,6 +267,8 @@ void handleIR() {
   if (key == IR_BTN_RESET) { singleAlarm.active = false; showPopup("Сброс"); irrecv.resume(); return; }
   if (key == IR_BTN_SUN) { toggleLamp(); irrecv.resume(); return; }
 
+  int digit = getDigit(key);
+
   switch (currentMode) {
     case MODE_CLOCK:
       if (key == IR_BTN_EQ) { currentMode = MODE_MENU; menuCursor = 0; }
@@ -245,6 +278,7 @@ void handleIR() {
       if (key == IR_BTN_PREV || key == IR_BTN_MINUS) menuCursor = (menuCursor + 3) % 4;
       if (key == IR_BTN_NEXT || key == IR_BTN_PLUS) menuCursor = (menuCursor + 1) % 4;
       if (key == IR_BTN_OK) {
+        digitBuffer = -1; // Сброс буфера перед входом
         if(menuCursor==0) { currentMode = MODE_SET_TIME; tempRtc = rtc; settingField = 0; }
         if(menuCursor==1) { currentMode = MODE_SET_ALARM; tempAlarm = singleAlarm; settingField = 0; }
         if(menuCursor==2) toggleLamp();
@@ -252,9 +286,14 @@ void handleIR() {
       }
       break;
     case MODE_SET_TIME:
-      if (key == IR_BTN_PREV) settingField = 0;
-      if (key == IR_BTN_NEXT) settingField = 1;
+      if (key == IR_BTN_PREV) { settingField = 0; digitBuffer = -1; }
+      if (key == IR_BTN_NEXT) { settingField = 1; digitBuffer = -1; }
+      if (digit != -1) {
+        if (settingField == 0) handleNumericInput(tempRtc.hour, 24, digit);
+        else handleNumericInput(tempRtc.minute, 60, digit);
+      }
       if (key == IR_BTN_PLUS || key == IR_BTN_MINUS) {
+        digitBuffer = -1;
         int diff = (key == IR_BTN_PLUS) ? 1 : -1;
         if(settingField==0) tempRtc.hour = (tempRtc.hour + diff + 24) % 24;
         else tempRtc.minute = (tempRtc.minute + diff + 60) % 60;
@@ -262,9 +301,14 @@ void handleIR() {
       if (key == IR_BTN_OK) { rtc = tempRtc; currentMode = MODE_CLOCK; showPopup("ОК"); }
       break;
     case MODE_SET_ALARM:
-      if (key == IR_BTN_PREV) settingField = (settingField + 2) % 3;
-      if (key == IR_BTN_NEXT) settingField = (settingField + 1) % 3;
+      if (key == IR_BTN_PREV) { settingField = (settingField + 2) % 3; digitBuffer = -1; }
+      if (key == IR_BTN_NEXT) { settingField = (settingField + 1) % 3; digitBuffer = -1; }
+      if (digit != -1 && settingField != 2) {
+        if (settingField == 0) handleNumericInput((int&)tempAlarm.hour, 24, digit);
+        else handleNumericInput((int&)tempAlarm.minute, 60, digit);
+      }
       if (key == IR_BTN_PLUS || key == IR_BTN_MINUS) {
+        digitBuffer = -1;
         int diff = (key == IR_BTN_PLUS) ? 1 : -1;
         if(settingField==0) tempAlarm.hour = (tempAlarm.hour + diff + 24) % 24;
         else if(settingField==1) tempAlarm.minute = (tempAlarm.minute + diff + 60) % 60;
@@ -272,7 +316,6 @@ void handleIR() {
       }
       if (key == IR_BTN_OK) { 
         singleAlarm = tempAlarm; 
-        // Если время совпадает прямо сейчас - пропускаем срабатывание (+сутки)
         if (singleAlarm.hour == rtc.hour && singleAlarm.minute == rtc.minute) alarmSkipToday = true;
         currentMode = MODE_CLOCK; showPopup("Буд. ОК"); 
       }
