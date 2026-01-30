@@ -12,9 +12,6 @@
 unsigned long lastActivity = 0;
 bool isIdle = false;
 unsigned long lastKeyTime = 0;
-unsigned long digitInputTime = 0;
-int digitBuffer = -1;
-#define DIGIT_TIMEOUT 1500
 
 #include "fonts/FontsRus/FreeSansBold14.h"
 #include "fonts/FontsRus/FreeSansBold9.h"
@@ -57,14 +54,14 @@ SingleAlarm singleAlarm = {7, 0, false};
 SoftClock tempRtc = {12, 0, 0, 1, 0};
 SingleAlarm tempAlarm = {7, 0, false};
 int menuCursor = 0;
-int settingField = 0; // 0-часы, 1-минуты, 2-статус(для аларма)
+int settingField = 0; // 0-часы, 1-минуты, 2-статус
 float temp = 22.0, hum = 45.0;
 bool lampState = false;
 Particle particles[MAX_PARTICLES];
 unsigned long lastDraw = 0, lastSensor = 0, popupTimer = 0;
 String popupMsg = "";
 long nextBlink = 0;
-int pupilX = 0, pupilY = 0, weatherEffect = 0;
+int pupilX = 0, pupilY = 0;
 
 enum EyeEmotion { EYE_NORMAL, EYE_HAPPY, EYE_SLEEPY, EYE_ANGRY, EYE_CRY, EYE_LAUGH, EYE_WINK };
 EyeEmotion eyeEmotion = EYE_NORMAL;
@@ -77,6 +74,7 @@ const char* quotes[] = {
 int quoteIdx = 0;
 unsigned long soundTimer = 0;
 bool isRinging = false;
+int ringStep = 0;
 
 String utf8rus(String source) {
   String target = "";
@@ -97,20 +95,6 @@ String utf8rus(String source) {
     }
   }
   return target;
-}
-
-int getDigitFromKey(unsigned long key) {
-  if (key == IR_BTN_0) return 0;
-  if (key == IR_BTN_1) return 1;
-  if (key == IR_BTN_2) return 2;
-  if (key == IR_BTN_3) return 3;
-  if (key == IR_BTN_4) return 4;
-  if (key == IR_BTN_5) return 5;
-  if (key == IR_BTN_6) return 6;
-  if (key == IR_BTN_7) return 7;
-  if (key == IR_BTN_8) return 8;
-  if (key == IR_BTN_9) return 9;
-  return -1;
 }
 
 void showPopup(String msg) { popupMsg = msg; popupTimer = millis(); }
@@ -170,11 +154,16 @@ void checkAlarm() {
   }
 }
 
+// Агрессивная трель для пробуждения
 void playBirdSong() {
   if (!isRinging) return;
-  if (millis() - soundTimer > 180) {
-    soundTimer = millis(); noTone(PIN_BUZZER);
-    tone(PIN_BUZZER, random(2600, 3500), random(60, 90));
+  unsigned long now = millis();
+  if (now - soundTimer > 100) { // Быстрая смена нот
+    soundTimer = now;
+    noTone(PIN_BUZZER);
+    // Высокие частоты (3-4 кГц) наиболее слышимы для пьезо
+    int note = random(3000, 4500); 
+    tone(PIN_BUZZER, note, 90); 
   }
 }
 
@@ -188,6 +177,47 @@ void drawGradient() {
   }
 }
 
+// Хелпер для центрирования текста
+void drawCenteredText(int y, String text, const GFXfont* font) {
+  int16_t x1, y1;
+  uint16_t w, h;
+  canvas.setFont(font);
+  canvas.getTextBounds(utf8rus(text), 0, y, &x1, &y1, &w, &h);
+  int x = (TFT_WIDTH - w) / 2;
+  canvas.setCursor(x, y);
+  canvas.print(utf8rus(text));
+}
+
+// Хелпер для отрисовки "iOS" элемента
+void drawIOSElement(int x, int y, int w, int h, String text, bool selected) {
+  // Фон элемента
+  canvas.fillRoundRect(x, y, w, h, 6, currentTheme->panel);
+  
+  // Рамка элемента (IOS style)
+  if (selected) {
+    // Жирная белая/акцентная рамка для активного
+    canvas.drawRoundRect(x, y, w, h, 6, ST7735_WHITE);
+    canvas.drawRoundRect(x+1, y+1, w-2, h-2, 5, ST7735_WHITE);
+    canvas.setTextColor(currentTheme->accent);
+  } else {
+    // Тонкая темная рамка для неактивного
+    canvas.drawRoundRect(x, y, w, h, 6, currentTheme->border);
+    canvas.setTextColor(currentTheme->text);
+  }
+  
+  // Центрирование текста внутри плашки
+  int16_t bx, by; uint16_t bw, bh;
+  canvas.setFont(FONT_TEXT);
+  canvas.getTextBounds(utf8rus(text), 0, 0, &bx, &by, &bw, &bh);
+  
+  // Корректировка вертикали для шрифта (baseline)
+  int textY = y + (h/2) + (bh/2) - 2; 
+  int textX = x + (w - bw) / 2;
+  
+  canvas.setCursor(textX, textY);
+  canvas.print(utf8rus(text));
+}
+
 void drawEyes() {
   int x1 = 45, y1 = 42, x2 = 115, y2 = 42, r = 14;
   if (millis() > nextBlink && millis() < nextBlink + 120) {
@@ -199,27 +229,22 @@ void drawEyes() {
   }
 }
 
-void drawMenuItem(int y, String text, bool selected) {
-  if (selected) {
-    canvas.fillRoundRect(5, y, TFT_WIDTH-10, 18, 4, currentTheme->panel);
-    canvas.setTextColor(currentTheme->accent);
-  } else canvas.setTextColor(currentTheme->text);
-  canvas.setCursor(15, y + 14); canvas.print(utf8rus(text));
-}
-
 void drawClock() {
   drawGradient();
   if (isIdle) {
     drawEyes();
     if ((millis() / 8000) % 2 == 0) {
-      canvas.setFont(FONT_TEXT); canvas.setTextColor(currentTheme->accent);
-      canvas.setCursor(20, 25); canvas.print(utf8rus(quotes[quoteIdx]));
+      canvas.setTextColor(currentTheme->accent);
+      drawCenteredText(30, quotes[quoteIdx], FONT_TEXT);
     }
   } else {
-    canvas.setFont(FONT_TIME); canvas.setTextColor(currentTheme->accent);
-    canvas.setCursor(38, 48); char buf[6]; snprintf(buf, 6, "%02d:%02d", rtc.hour, rtc.minute); canvas.print(buf);
-    canvas.setFont(FONT_TEXT); canvas.setTextColor(currentTheme->text);
-    canvas.setCursor(45, 75); canvas.print(String((int)temp) + "C " + String((int)hum) + "%");
+    canvas.setTextColor(currentTheme->accent);
+    char buf[6]; snprintf(buf, 6, "%02d:%02d", rtc.hour, rtc.minute);
+    drawCenteredText(50, buf, FONT_TIME);
+    
+    canvas.setTextColor(currentTheme->text);
+    drawCenteredText(75, String((int)temp) + "C " + String((int)hum) + "%", FONT_TEXT);
+    
     if (singleAlarm.active) canvas.fillCircle(10, 10, 3, RGB(255, 50, 50));
     if (lampState) canvas.fillCircle(150, 10, 4, RGB(255, 220, 100));
   }
@@ -227,46 +252,81 @@ void drawClock() {
 }
 
 void drawMenu() {
-  drawGradient(); canvas.setFont(FONT_HEADER); canvas.setTextColor(currentTheme->accent);
-  canvas.setCursor(55, 18); canvas.print(utf8rus("МЕНЮ"));
-  canvas.setFont(FONT_TEXT);
+  drawGradient(); 
+  canvas.setTextColor(currentTheme->accent);
+  drawCenteredText(18, "МЕНЮ", FONT_HEADER);
+  
   const char* items[] = {"Время", "Будильник", "Свет", "Цитата"};
-  for(int i = 0; i < 4; i++) drawMenuItem(25 + i*14, items[i], i == menuCursor);
+  int itemW = 70; // Ширина кнопок
+  int itemH = 22; // Высота кнопок
+  int startY = 28;
+  
+  // Сетка 2x2 для центрирования
+  for(int i = 0; i < 4; i++) {
+    int col = i % 2;
+    int row = i / 2;
+    int x = 8 + col * (itemW + 6);
+    int y = startY + row * (itemH + 4);
+    drawIOSElement(x, y, itemW, itemH, items[i], i == menuCursor);
+  }
 }
 
 void drawSetTime() {
-  drawGradient(); canvas.setFont(FONT_HEADER); canvas.setCursor(50, 20); canvas.print(utf8rus("ВРЕМЯ"));
-  canvas.setFont(FONT_TIME);
-  canvas.setTextColor(settingField == 0 ? currentTheme->accent : currentTheme->text);
-  canvas.setCursor(35, 55); canvas.print(tempRtc.hour < 10 ? "0" : ""); canvas.print(tempRtc.hour);
-  canvas.setTextColor(currentTheme->text); canvas.print(":");
-  canvas.setTextColor(settingField == 1 ? currentTheme->accent : currentTheme->text);
-  canvas.print(tempRtc.minute < 10 ? "0" : ""); canvas.print(tempRtc.minute);
+  drawGradient(); 
+  canvas.setTextColor(currentTheme->accent);
+  drawCenteredText(18, "ВРЕМЯ", FONT_HEADER);
+  
+  int boxSize = 40;
+  int startX = (TFT_WIDTH - (boxSize*2 + 10)) / 2; // Центрируем весь блок
+  
+  String hStr = tempRtc.hour < 10 ? "0"+String(tempRtc.hour) : String(tempRtc.hour);
+  drawIOSElement(startX, 35, boxSize, 35, hStr, settingField == 0);
+  
+  canvas.setFont(FONT_TIME); canvas.setTextColor(ST7735_WHITE);
+  canvas.setCursor(startX + boxSize + 2, 60); canvas.print(":"); // Двоеточие между
+  
+  String mStr = tempRtc.minute < 10 ? "0"+String(tempRtc.minute) : String(tempRtc.minute);
+  drawIOSElement(startX + boxSize + 10, 35, boxSize, 35, mStr, settingField == 1);
 }
 
 void drawSetAlarm() {
-  drawGradient(); canvas.setFont(FONT_HEADER); canvas.setCursor(35, 20); canvas.print(utf8rus("БУДИЛЬНИК"));
-  canvas.setFont(FONT_TIME);
-  canvas.setTextColor(settingField == 0 ? currentTheme->accent : currentTheme->text);
-  canvas.setCursor(25, 55); canvas.print(tempAlarm.hour < 10 ? "0" : ""); canvas.print(tempAlarm.hour);
-  canvas.setTextColor(currentTheme->text); canvas.print(":");
-  canvas.setTextColor(settingField == 1 ? currentTheme->accent : currentTheme->text);
-  canvas.print(tempAlarm.minute < 10 ? "0" : ""); canvas.print(tempAlarm.minute);
+  drawGradient(); 
+  canvas.setTextColor(currentTheme->accent);
+  drawCenteredText(18, "БУДИЛЬНИК", FONT_HEADER);
   
-  canvas.setFont(FONT_TEXT);
-  canvas.setTextColor(settingField == 2 ? currentTheme->accent : currentTheme->text);
-  canvas.setCursor(105, 50); canvas.print(utf8rus(tempAlarm.active ? "ВКЛ" : "ВЫКЛ"));
+  int boxW = 35;
+  int startX = 15;
+  
+  // Часы
+  String hStr = tempAlarm.hour < 10 ? "0"+String(tempAlarm.hour) : String(tempAlarm.hour);
+  drawIOSElement(startX, 35, boxW, 30, hStr, settingField == 0);
+  
+  // Двоеточие
+  canvas.setFont(FONT_TEXT); canvas.setTextColor(ST7735_WHITE);
+  canvas.setCursor(startX + boxW + 2, 55); canvas.print(":");
+  
+  // Минуты
+  String mStr = tempAlarm.minute < 10 ? "0"+String(tempAlarm.minute) : String(tempAlarm.minute);
+  drawIOSElement(startX + boxW + 8, 35, boxW, 30, mStr, settingField == 1);
+  
+  // Статус ВКЛ/ВЫКЛ
+  drawIOSElement(startX + boxW*2 + 20, 35, 55, 30, tempAlarm.active ? "ВКЛ" : "ВЫКЛ", settingField == 2);
 }
 
 void drawQuotesScreen() {
-  drawGradient(); canvas.setFont(FONT_TEXT); canvas.setTextColor(currentTheme->accent);
-  canvas.setCursor(20, 45); canvas.print(utf8rus(quotes[quoteIdx]));
+  drawGradient(); 
+  // Рисуем большую рамку для цитаты
+  canvas.drawRoundRect(10, 25, TFT_WIDTH-20, 40, 6, currentTheme->border);
+  canvas.fillRoundRect(11, 26, TFT_WIDTH-22, 38, 6, currentTheme->panel);
+  
+  canvas.setTextColor(currentTheme->accent);
+  drawCenteredText(50, quotes[quoteIdx], FONT_TEXT);
 }
 
 void drawRing() {
-  canvas.fillScreen((millis()/300)%2 ? RGB(60,20,20) : RGB(20,10,10));
-  canvas.setFont(FONT_TIME); canvas.setTextColor(ST7735_WHITE);
-  canvas.setCursor(25, 45); canvas.print(utf8rus("ПОДЪЁМ!"));
+  canvas.fillScreen((millis()/200)%2 ? RGB(100,20,20) : ST7735_BLACK); // Мигание фона красным
+  canvas.setTextColor(ST7735_WHITE);
+  drawCenteredText(50, "ПОДЪЁМ!", FONT_TIME);
 }
 
 void handleIR() {
@@ -274,6 +334,17 @@ void handleIR() {
   unsigned long key = results.value; unsigned long now = millis();
   if (now - lastKeyTime < 150) { irrecv.resume(); return; }
   lastKeyTime = now;
+  
+  // ЕСЛИ БУДИЛЬНИК ЗВОНИТ - ЛЮБАЯ КНОПКА ЕГО ВЫКЛЮЧАЕТ ПОЛНОСТЬЮ
+  if (currentMode == MODE_RING) {
+    isRinging = false; 
+    noTone(PIN_BUZZER);         // Выключить звук
+    digitalWrite(PIN_RELAY, LOW); // Выключить свет
+    lampState = false;          // Сбросить состояние лампы
+    currentMode = MODE_CLOCK; 
+    irrecv.resume(); 
+    return;
+  }
   
   if (isIdle) { isIdle = false; lastActivity = now; irrecv.resume(); return; }
   lastActivity = now;
@@ -283,18 +354,13 @@ void handleIR() {
   if (key == IR_BTN_RESET) { singleAlarm.active = false; showPopup("Сброс аларма"); irrecv.resume(); return; }
   if (key == IR_BTN_SUN) { toggleLamp(); irrecv.resume(); return; }
 
-  if (currentMode == MODE_RING) {
-    isRinging = false; noTone(PIN_BUZZER); digitalWrite(PIN_RELAY, LOW); lampState = false;
-    currentMode = MODE_CLOCK; irrecv.resume(); return;
-  }
-
-  int digit = getDigitFromKey(key);
   switch (currentMode) {
     case MODE_CLOCK:
       if (key == IR_BTN_EQ) { currentMode = MODE_MENU; menuCursor = 0; }
       if (key == IR_BTN_MESSAGE) { currentMode = MODE_QUOTES; quoteIdx = random(12); }
       break;
     case MODE_MENU:
+      // Перемещение по сетке 2x2
       if (key == IR_BTN_PREV || key == IR_BTN_MINUS) menuCursor = (menuCursor + 3) % 4;
       if (key == IR_BTN_NEXT || key == IR_BTN_PLUS) menuCursor = (menuCursor + 1) % 4;
       if (key == IR_BTN_OK) {
@@ -356,10 +422,16 @@ void loop() {
       case MODE_QUOTES: drawQuotesScreen(); break;
       case MODE_RING: drawRing(); break;
     }
+    // Попап уведомления
     if (millis() - popupTimer < 1500 && popupMsg != "") {
-      canvas.fillRoundRect(20, 30, 120, 20, 4, RGB(40,40,80));
-      canvas.setFont(FONT_TEXT); canvas.setTextColor(ST7735_WHITE);
-      canvas.setCursor(35, 45); canvas.print(utf8rus(popupMsg));
+      // Рисуем попап в стиле iOS
+      int pW = 120, pH = 24;
+      int pX = (TFT_WIDTH - pW) / 2;
+      int pY = 30;
+      canvas.fillRoundRect(pX, pY, pW, pH, 6, RGB(50,50,90));
+      canvas.drawRoundRect(pX, pY, pW, pH, 6, ST7735_WHITE);
+      canvas.setTextColor(ST7735_WHITE);
+      drawCenteredText(pY + 16, popupMsg, FONT_TEXT);
     }
     tft.drawRGBBitmap(0, 0, canvas.getBuffer(), TFT_WIDTH, TFT_HEIGHT);
     lastDraw = millis();
