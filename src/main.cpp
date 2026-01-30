@@ -228,6 +228,51 @@ void drawIOSElement(int x, int y, int w, int h, String text, bool selected) {
   canvas.print(utf8rus(text));
 }
 
+void drawEyes() {
+  int baseY = 42;
+  int spacing = random(55, 75);
+  int x1 = (TFT_WIDTH - spacing) / 2;
+  int x2 = x1 + spacing;
+
+  int eyeR = random(12, 16);
+  int pupilR = random(3, 6);
+
+  int dx = 0, dy = 0;
+  bool closed = blinkNow;
+
+  switch (currentEmotion) {
+    case E_HAPPY: dy = -2; break;
+    case E_ANGRY: dy = 2; break;
+    case E_SLEEPY: closed = true; break;
+    case E_LOOK_LEFT: dx = -4; break;
+    case E_LOOK_RIGHT: dx = 4; break;
+    case E_LOOK_UP: dy = -4; break;
+    case E_LOOK_DOWN: dy = 4; break;
+    default: break;
+  }
+
+  canvas.fillCircle(x1, baseY, eyeR, ST7735_WHITE);
+  canvas.fillCircle(x2, baseY, eyeR, ST7735_WHITE);
+
+  if (!closed) {
+    canvas.fillCircle(x1 + dx, baseY + dy, pupilR, ST7735_BLACK);
+    canvas.fillCircle(x2 + dx, baseY + dy, pupilR, ST7735_BLACK);
+  } else {
+    canvas.drawFastHLine(x1 - eyeR/2, baseY, eyeR, ST7735_BLACK);
+    canvas.drawFastHLine(x2 - eyeR/2, baseY, eyeR, ST7735_BLACK);
+  }
+
+  if (currentEmotion == E_ANGRY) {
+    canvas.drawLine(x1 - eyeR, baseY - eyeR, x1 + eyeR, baseY - eyeR/2, ST7735_BLACK);
+    canvas.drawLine(x2 - eyeR, baseY - eyeR/2, x2 + eyeR, baseY - eyeR, ST7735_BLACK);
+  }
+
+  if (currentEmotion == E_HAPPY) {
+    canvas.drawCircle(x1, baseY + eyeR/2, eyeR/2, ST7735_BLACK);
+    canvas.drawCircle(x2, baseY + eyeR/2, eyeR/2, ST7735_BLACK);
+  }
+}
+
 void drawClock() {
   uint16_t c1 = currentTheme->top, c2 = currentTheme->bot;
   for (int y = 0; y < TFT_HEIGHT; y++) {
@@ -240,10 +285,8 @@ void drawClock() {
   if (hum < 30) drawSand();
 
 
-  if (isIdle) {
-    int x1 = 45, y1 = 42, x2 = 115, y2 = 42, r = 14;
-    canvas.fillCircle(x1, y1, r, ST7735_WHITE); canvas.fillCircle(x2, y2, r, ST7735_WHITE);
-    canvas.fillCircle(x1, y1, 5, ST7735_BLACK); canvas.fillCircle(x2, y2, 5, ST7735_BLACK);
+  if (isIdle && idleMode == IDLE_EYES) {
+      drawEyes();
   } else {
     canvas.setTextColor(currentTheme->accent);
     char buf[6]; snprintf(buf, 6, "%02d:%02d", rtc.hour, rtc.minute);
@@ -294,51 +337,6 @@ void drawQuotesScreen() {
   canvas.drawRoundRect(pX, pY, pW, pH, 8, ST7735_WHITE);
   canvas.setTextColor(ST7735_WHITE);
   drawCenteredText(pY + 22, quotes[quoteIdx], FONT_TEXT);
-}
-
-void drawEyes() {
-  int baseY = 42;
-  int spacing = random(55, 75);
-  int x1 = (TFT_WIDTH - spacing) / 2;
-  int x2 = x1 + spacing;
-
-  int eyeR = random(12, 16);
-  int pupilR = random(3, 6);
-
-  int dx = 0, dy = 0;
-  bool closed = blinkNow;
-
-  switch (currentEmotion) {
-    case E_HAPPY: dy = -2; break;
-    case E_ANGRY: dy = 2; break;
-    case E_SLEEPY: closed = true; break;
-    case E_LOOK_LEFT: dx = -4; break;
-    case E_LOOK_RIGHT: dx = 4; break;
-    case E_LOOK_UP: dy = -4; break;
-    case E_LOOK_DOWN: dy = 4; break;
-    default: break;
-  }
-
-  canvas.fillCircle(x1, baseY, eyeR, ST7735_WHITE);
-  canvas.fillCircle(x2, baseY, eyeR, ST7735_WHITE);
-
-  if (!closed) {
-    canvas.fillCircle(x1 + dx, baseY + dy, pupilR, ST7735_BLACK);
-    canvas.fillCircle(x2 + dx, baseY + dy, pupilR, ST7735_BLACK);
-  } else {
-    canvas.drawFastHLine(x1 - eyeR/2, baseY, eyeR, ST7735_BLACK);
-    canvas.drawFastHLine(x2 - eyeR/2, baseY, eyeR, ST7735_BLACK);
-  }
-
-  if (currentEmotion == E_ANGRY) {
-    canvas.drawLine(x1 - eyeR, baseY - eyeR, x1 + eyeR, baseY - eyeR/2, ST7735_BLACK);
-    canvas.drawLine(x2 - eyeR, baseY - eyeR/2, x2 + eyeR, baseY - eyeR, ST7735_BLACK);
-  }
-
-  if (currentEmotion == E_HAPPY) {
-    canvas.drawCircle(x1, baseY + eyeR/2, eyeR/2, ST7735_BLACK);
-    canvas.drawCircle(x2, baseY + eyeR/2, eyeR/2, ST7735_BLACK);
-  }
 }
 
 // Универсальная функция обработки цифрового ввода
@@ -458,9 +456,32 @@ void setup() {
 }
 
 void loop() {
-  updateTime(); checkAlarm(); handleIR();
-  if (currentMode == MODE_CLOCK && !isRinging && millis() - lastActivity > IDLE_TIMEOUT) isIdle = true;
-  if (isRinging) playBirdSong();
+  updateTime();
+  checkAlarm();
+  handleIR();
+
+  if (currentMode == MODE_CLOCK && !isRinging && millis() - lastActivity > IDLE_TIMEOUT)
+      isIdle = true;
+
+  // ----------------------------
+  // Смена эмоций каждые 3 сек
+  if (millis() - lastEmotionChange > 3000) {
+      currentEmotion = (EyeEmotion)random(E_NEUTRAL, E_LOOK_DOWN + 1); // 0..8
+      lastEmotionChange = millis();
+  }
+
+  // Моргание глаз
+  if (millis() > blinkUntil && random(100) < 3) {
+      blinkNow = true;
+      blinkUntil = millis() + 120;
+  }
+  if (blinkNow && millis() > blinkUntil) {
+      blinkNow = false;
+  }
+  // ----------------------------
+
+  if (isRinging)
+      playBirdSong();
 
   if (millis() - lastDraw > 50) {
     canvas.fillScreen(ST7735_BLACK);
@@ -470,45 +491,35 @@ void loop() {
       case MODE_SET_TIME: drawSetTime(); break;
       case MODE_SET_ALARM: drawSetAlarm(); break;
       case MODE_QUOTES: drawQuotesScreen(); break;
-      case MODE_RING: 
+      case MODE_RING:
         canvas.fillScreen((millis()/200)%2 ? RGB(100,0,0) : ST7735_BLACK);
         canvas.setTextColor(ST7735_WHITE); drawCenteredText(50, "ПОДЪЁМ!", FONT_TIME);
         break;
     }
+
     if (millis() - popupTimer < 1500 && popupMsg != "") {
       canvas.fillRoundRect(20, 30, 120, 24, 6, RGB(50,50,90));
       canvas.drawRoundRect(20, 30, 120, 24, 6, ST7735_WHITE);
       canvas.setTextColor(ST7735_WHITE); drawCenteredText(46, popupMsg, FONT_TEXT);
     }
+
     tft.drawRGBBitmap(0, 0, canvas.getBuffer(), TFT_WIDTH, TFT_HEIGHT);
     lastDraw = millis();
   }
-  if (isIdle) {
-    if (millis() - lastIdleSwitch > IDLE_SWITCH_TIME) {
+
+  // Переключение idle режима (глаза/цитата)
+  if (isIdle && millis() - lastIdleSwitch > IDLE_SWITCH_TIME) {
       idleMode = (random(2) == 0) ? IDLE_EYES : IDLE_QUOTE;
       lastIdleSwitch = millis();
-    }
-
-    if (millis() - lastEmotionChange > 3000) {
-      currentEmotion = (EyeEmotion)random(0, 9);
-      lastEmotionChange = millis();
-    }
   }
 
   if (millis() - lastSensor > 3000) {
-    temp = dht.readTemperature();
-    hum = dht.readHumidity();
-    updateThemeByEnv();
-    lastSensor = millis();
-  }
-  if (isIdle && millis() > blinkUntil && random(100) < 3) {
-    blinkNow = true;
-    blinkUntil = millis() + 120;
-  }
-  if (blinkNow && millis() > blinkUntil) {
-    blinkNow = false;
+      temp = dht.readTemperature();
+      hum = dht.readHumidity();
+      updateThemeByEnv();
+      lastSensor = millis();
   }
 
-  if (!isIdle) idleMode = IDLE_EYES;
-
+  if (!isIdle)
+      idleMode = IDLE_EYES;
 }
