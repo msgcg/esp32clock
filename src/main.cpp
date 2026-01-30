@@ -8,6 +8,10 @@
 #include <DHT.h>
 #include "config.h" 
 
+
+unsigned long lastActivity = 0; // Таймер бездействия
+bool isIdle = false;            // Состояние "сна" (анимации)
+
 // --- Подключение шрифтов ---
 #include "fonts/FontsRus/FreeSansBold14.h"
 #include "fonts/FontsRus/FreeSansBold9.h"
@@ -42,11 +46,11 @@ struct Theme {
     uint16_t panel;  
 };
 
-Theme thNight  = { RGB(10,10,30),   RGB(0,0,0),       RGB(200,200,200), RGB(255,200,0),   RGB(40,40,50) };
-Theme thWinter = { RGB(60,80,140),  RGB(200,220,255), RGB(20,20,20),    RGB(0,0,255),     RGB(200,200,220) }; // Текст темный на светлом фоне
-Theme thSpring = { RGB(40,120,60),  RGB(180,255,100), RGB(255,255,240), RGB(255,100,150), RGB(20,80,40) };
-Theme thSummer = { RGB(0,150,250),  RGB(255,230,100), RGB(255,255,255), RGB(255,165,0),   RGB(0,100,200) };
-Theme thAutumn = { RGB(140,70,0),   RGB(255,180,0),   RGB(255,240,200), RGB(255,215,0),   RGB(100,50,0) };
+Theme thNight  = { RGB(0,0,10),    RGB(0,0,0),       RGB(255,255,255), RGB(255,200,0),   RGB(40,40,60) };
+Theme thWinter = { RGB(20,20,60),  RGB(100,100,150), RGB(255,255,255), RGB(0,255,255),   RGB(30,30,80) };
+Theme thSpring = { RGB(10,40,10),  RGB(40,80,40),    RGB(255,255,255), RGB(100,255,100), RGB(20,50,20) };
+Theme thSummer = { RGB(0,50,100),  RGB(0,100,150),   RGB(255,255,255), RGB(255,150,0),   RGB(0,40,80) };
+Theme thAutumn = { RGB(40,20,0),   RGB(80,40,0),     RGB(255,255,255), RGB(255,200,0),   RGB(60,30,0) };
 
 Theme* currentTheme = &thNight;
 
@@ -59,7 +63,7 @@ enum AppMode {
 
 enum AlarmType { ALARM_OFF, ALARM_ONCE, ALARM_DAILY, ALARM_WEEKDAY };
 enum AlarmSound { SOUND_BEEP, SOUND_BIRDS, SOUND_SIREN };
-enum LightMode { LIGHT_STATIC, LIGHT_BLINK, LIGHT_OFF };
+enum LightMode { LIGHT_STATIC, LIGHT_BLINK, LIGHT_BEAT, LIGHT_OFF };
 
 struct Alarm {
     uint8_t hour;
@@ -259,26 +263,47 @@ void checkAlarms() {
 }
 
 void playAlarmSound() {
-    if (millis() - soundTimer > 200) { 
-        soundTimer = millis();
-        soundState = !soundState;
-        
-        AlarmSound s = alarms[currentAlarmIdx].sound;
-        if (s == SOUND_BEEP) {
-            if (soundState) tone(PIN_BUZZER, 1000, 100); else noTone(PIN_BUZZER);
-        } else if (s == SOUND_SIREN) {
-            if (soundState) tone(PIN_BUZZER, 600, 150); else tone(PIN_BUZZER, 1200, 150);
-        } else { 
-            if (soundState) { tone(PIN_BUZZER, 2000, 50); delay(50); tone(PIN_BUZZER, 2500, 50); }
+    AlarmSound soundMode = alarms[currentAlarmIdx].sound;
+    LightMode lightMode = alarms[currentAlarmIdx].light;
+
+    unsigned long now = millis();
+    unsigned long interval = 500; // Базовый интервал
+    
+    if (soundMode == SOUND_SIREN) interval = 250;
+    if (soundMode == SOUND_BIRDS) interval = 120;
+
+    if (now - soundTimer > interval) {
+        soundTimer = now;
+        soundState++; // Используем счетчик для сложных паттернов
+
+        // --- Логика звука ---
+        noTone(PIN_BUZZER); // Сброс предыдущего звука
+        if (lightMode == LIGHT_BEAT) digitalWrite(PIN_RELAY, LOW);
+
+        if (soundMode == SOUND_BEEP) {
+            if (soundState % 2 == 0) {
+                tone(PIN_BUZZER, 1200, 200);
+                if (lightMode == LIGHT_BEAT) digitalWrite(PIN_RELAY, HIGH);
+            }
+        } else if (soundMode == SOUND_SIREN) {
+            if (soundState % 2 == 0) tone(PIN_BUZZER, 600, 100);
+            else tone(PIN_BUZZER, 1500, 100);
+        } else if (soundMode == SOUND_BIRDS) {
+            if (soundState % 4 == 0) {
+                tone(PIN_BUZZER, 3000, 50);
+                if (lightMode == LIGHT_BEAT) digitalWrite(PIN_RELAY, HIGH);
+            } else if (soundState % 4 == 2) {
+                tone(PIN_BUZZER, 4000, 50);
+                if (lightMode == LIGHT_BEAT) digitalWrite(PIN_RELAY, HIGH);
+            }
         }
 
-        if (alarms[currentAlarmIdx].light == LIGHT_BLINK) {
-            lampState = !lampState;
-            digitalWrite(PIN_RELAY, lampState);
+        // --- Логика света ---
+        if (lightMode == LIGHT_BLINK) {
+            digitalWrite(PIN_RELAY, (soundState % 2 == 0));
         }
     }
 }
-
 // ---------------- Отрисовка ----------------
 
 void drawGradient() {
@@ -332,28 +357,38 @@ void drawListItem(int y, String text, bool selected) {
 
 void drawScreenClock() {
     drawGradient();
-    
-    if (currentMode == MODE_CLOCK) { 
-        drawEyes(0);
-        updateWeatherEffect();
-
+    if (isIdle) {
+        // В простое показываем глаза и иногда цитаты
+        drawEyes(0); 
+        if ((rtc.second / 10) % 2 == 0) { // Каждые 10 сек показываем облачко с цитатой
+             canvas.fillRoundRect(10, 5, 140, 25, 5, currentTheme->panel);
+             canvas.setFont(FONT_TEXT);
+             canvas.setTextColor(currentTheme->text);
+             canvas.setCursor(15, 22);
+             canvas.print(utf8rus(quotes[quoteIdx]));
+        }
+    } else {
+        // Огромные часы по центру
         canvas.setFont(FONT_TIME);
-        canvas.setTextColor(currentTheme->text);
-        char timeS[10];
-        snprintf(timeS, 10, "%02d:%02d", rtc.hour, rtc.minute);
+        canvas.setTextSize(2); // Двойной размер для жирного шрифта
+        char timeS[6];
+        snprintf(timeS, 6, "%02d:%02d", rtc.hour, rtc.minute);
         int16_t x1, y1; uint16_t w, h;
         canvas.getTextBounds(timeS, 0, 0, &x1, &y1, &w, &h);
-        canvas.setCursor((160-w)/2, 75); 
-        canvas.print(timeS);
-
-        canvas.setFont(FONT_TEXT);
         canvas.setTextColor(currentTheme->accent);
-        canvas.setCursor(5, 15);
-        canvas.print(String(rtc.day) + "." + String(rtc.month));
-        
-        canvas.setCursor(100, 15);
-        canvas.print(String((int)temp) + "C " + String((int)hum) + "%");
+        canvas.setCursor((160-w)/2, 55); 
+        canvas.print(timeS);
+        canvas.setTextSize(1); // Возвращаем размер
+
+        // Дата и погода снизу
+        canvas.setFont(FONT_TEXT);
+        canvas.setTextColor(currentTheme->text);
+        String info = String(rtc.day) + "." + String(rtc.month) + " | " + String((int)temp) + "C";
+        canvas.getTextBounds(utf8rus(info), 0, 0, &x1, &y1, &w, &h);
+        canvas.setCursor((160-w)/2, 75);
+        canvas.print(utf8rus(info));
     }
+    updateWeatherEffect();
 }
 
 void drawMenu() {
@@ -416,36 +451,29 @@ void drawSetTime() {
 
 // Экран настройки будильника (с использованием tempAlarm)
 void drawAlarmEdit() {
-    canvas.fillScreen(ST7735_BLACK);
+    drawGradient();
     canvas.setFont(FONT_HEADER);
-    canvas.setTextColor(currentTheme->text);
-    canvas.setCursor(5,15); canvas.print(utf8rus("Будильник ") + String(currentAlarmIdx+1));
-    
+    canvas.setTextColor(currentTheme->accent);
+    canvas.setCursor(10, 15); canvas.print(utf8rus("Настройка Б") + String(currentAlarmIdx+1));
+
     canvas.setFont(FONT_TEXT);
-    int y = 30;
-    
-    // Поле 0: Время
-    canvas.setCursor(5, y); canvas.print(utf8rus("Время: "));
-    if(settingField==0) canvas.setTextColor(currentTheme->accent); else canvas.setTextColor(currentTheme->text);
-    canvas.print(tempAlarm.hour); canvas.print(":");
-    if(settingField==1) canvas.setTextColor(currentTheme->accent); else canvas.setTextColor(currentTheme->text);
-    canvas.print(tempAlarm.minute < 10 ? "0" : ""); canvas.print(tempAlarm.minute);
-    
-    y += 15;
-    // Поле 2: Режим
-    canvas.setTextColor(currentTheme->text); canvas.setCursor(5, y); canvas.print(utf8rus("Режим: "));
-    if(settingField==2) canvas.setTextColor(currentTheme->accent); else canvas.setTextColor(currentTheme->text);
+    // Формируем пункты
+    String items[5];
+    items[0] = "Часы: " + String(tempAlarm.hour);
+    items[1] = "Мин:  " + String(tempAlarm.minute);
     String types[] = {"ВЫКЛ", "1 Раз", "Ежедн", "Будни"};
-    canvas.print(utf8rus(types[tempAlarm.type]));
-
-    y += 15;
-    // Поле 3: Звук
-    canvas.setTextColor(currentTheme->text); canvas.setCursor(5, y); canvas.print(utf8rus("Звук: "));
-    if(settingField==3) canvas.setTextColor(currentTheme->accent); else canvas.setTextColor(currentTheme->text);
+    items[2] = "Тип:  " + types[tempAlarm.type];
     String sounds[] = {"Бип", "Птицы", "Сирена"};
-    canvas.print(utf8rus(sounds[tempAlarm.sound]));
-}
+    items[3] = "Звук: " + sounds[tempAlarm.sound];
+    items[4] = "[ СОХРАНИТЬ ]";
 
+    int start = (settingField > 2) ? settingField - 2 : 0;
+    for(int i=0; i<3; i++) {
+        int idx = start + i;
+        if(idx > 4) break;
+        drawListItem(22 + i*19, items[idx], idx == settingField);
+    }
+}
 void drawTutorial() {
     canvas.fillScreen(RGB(20,20,20));
     canvas.setFont(FONT_TEXT);
@@ -498,21 +526,29 @@ void drawQuotesScreen() {
 void handleIR() {
     if (!irrecv.decode(&results)) return;
     unsigned long key = results.value;
-    irrecv.resume(); 
-    delay(100); 
-
     int digit = getDigitFromKey(key); // Получаем цифру, если нажата
+    irrecv.resume();
+    
+    // ЛЮБАЯ КНОПКА пробуждает часы
+    if (isIdle) {
+        isIdle = false;
+        lastActivity = millis();
+        quoteIdx = random(0, 7); // Меняем цитату при пробуждении
+        return;
+    }
+    lastActivity = millis(); // Сброс таймера активности
 
-    if (key == IR_BTN_CH_MINUS) { 
-        toggleLamp();
+    if (key == IR_BTN_CH) { // Специальная кнопка возврата
+        currentMode = MODE_CLOCK;
         return;
     }
     
-    if (currentMode == MODE_RING) { 
-        currentMode = MODE_CLOCK;
-        noTone(PIN_BUZZER);
-        if (alarms[currentAlarmIdx].light == LIGHT_BLINK) digitalWrite(PIN_RELAY, LOW);
-        return;
+    if (currentMode == MODE_RING) { // Сброс звонка любой кнопкой
+    currentMode = MODE_CLOCK;
+    noTone(PIN_BUZZER);
+    digitalWrite(PIN_RELAY, LOW); // Гарантированно выключаем свет
+    lampState = false; // Сбрасываем состояние лампы
+    return;
     }
 
     if (currentMode == MODE_TUTORIAL) {
@@ -602,23 +638,21 @@ void handleIR() {
                 showPopup("Сохранено");
             }
             
-            if (key == IR_BTN_PREV) settingField = (settingField-1+4)%4;
-            if (key == IR_BTN_NEXT) settingField = (settingField+1)%4;
+            // Навигация по полям
+            if (key == IR_BTN_PREV || key == IR_BTN_MINUS) settingField = (settingField - 1 + 4) % 4; // 4 поля
+            if (key == IR_BTN_NEXT || key == IR_BTN_PLUS) settingField = (settingField + 1) % 4;
             
+            // Изменение значений выделенного поля
             if (key == IR_BTN_PLUS) {
-                if(settingField==0) tempAlarm.hour = (tempAlarm.hour+1)%24;
-                if(settingField==1) tempAlarm.minute = (tempAlarm.minute+1)%60;
-                if(settingField==2) { 
-                    int t = (int)tempAlarm.type + 1; if(t > 3) t = 0; tempAlarm.type = (AlarmType)t; 
-                }
-                if(settingField==3) { 
-                    int s = (int)tempAlarm.sound + 1; if(s > 2) s = 0; tempAlarm.sound = (AlarmSound)s; 
+                switch(settingField) {
+                    case 0: tempAlarm.minute = (tempAlarm.minute + 1) % 60; if(tempAlarm.minute == 0) tempAlarm.hour = (tempAlarm.hour + 1) % 24; break;
+                    case 1: tempAlarm.type = (AlarmType)(((int)tempAlarm.type + 1) % 4); break;
+                    case 2: tempAlarm.sound = (AlarmSound)(((int)tempAlarm.sound + 1) % 3); break;
+                    case 3: tempAlarm.light = (LightMode)(((int)tempAlarm.light + 1) % 4); break;
                 }
             }
-            
-            if (digit != -1) {
-                if(settingField==0) tempAlarm.hour = digit;
-                if(settingField==1) tempAlarm.minute = digit;
+            if (key == IR_BTN_MINUS) {
+                // Аналогично, но с декрементом
             }
             
             if (key == IR_BTN_200PLUS) {
@@ -627,11 +661,6 @@ void handleIR() {
                 currentMode = MODE_ALARMS_LIST;
                 showPopup("Удален");
             }
-            break;
-            
-        case MODE_QUOTES:
-            if (key == IR_BTN_CH || key == IR_BTN_EQ) currentMode = MODE_CLOCK;
-            if (key == IR_BTN_NEXT) { quoteIdx++; if(quoteIdx >= 7) quoteIdx = 0; }
             break;
     }
 }
@@ -660,20 +689,23 @@ void loop() {
     checkAlarms();
     handleIR();
 
+    // Если 15 секунд ничего не нажимали — переходим в режим анимации (Idle)
+    if (currentMode == MODE_CLOCK && millis() - lastActivity > 15000) {
+        isIdle = true;
+    }
+
     if (currentMode == MODE_RING) playAlarmSound();
 
     if (millis() - lastDraw > 50) {
         switch (currentMode) {
             case MODE_CLOCK: drawScreenClock(); break;
             case MODE_MENU: drawMenu(); break;
-            case MODE_SET_TIME: drawSetTime(); break;
+            case MODE_SET_TIME: drawSetTime(); break; // Можно тоже переделать в список аналогично AlarmEdit
             case MODE_ALARMS_LIST: 
-                drawGradient(); 
-                canvas.setFont(FONT_TEXT); 
+                drawGradient();
+                canvas.setFont(FONT_TEXT);
                 for(int i=0; i<MAX_ALARMS; i++) {
-                    String s = String(alarms[i].hour)+":"+(alarms[i].minute<10?"0":"")+String(alarms[i].minute);
-                    if(alarms[i].type == ALARM_OFF) s += " ВЫКЛ";
-                    else if(alarms[i].active) s += " ВКЛ";
+                    String s = "Буд." + String(i+1) + ": " + String(alarms[i].hour) + ":" + (alarms[i].minute<10?"0":"") + String(alarms[i].minute);
                     drawListItem(5 + i*24, s, i==menuCursor);
                 }
                 break;
@@ -683,11 +715,12 @@ void loop() {
             case MODE_RING: drawRing(); break;
         }
 
+        // Попап (исправлен шрифт и позиция)
         if(millis() - popupTimer < 2000 && popupMsg != "") {
-            canvas.fillRoundRect(30, 30, 100, 20, 5, currentTheme->accent);
+            canvas.fillRoundRect(20, 30, 120, 22, 5, ST7735_ORANGE);
             canvas.setTextColor(ST7735_BLACK);
             canvas.setFont(FONT_TEXT);
-            canvas.setCursor(35, 43); // Скорректировано под 9pt
+            canvas.setCursor(25, 46);
             canvas.print(utf8rus(popupMsg));
         }
 
