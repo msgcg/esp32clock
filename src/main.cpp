@@ -233,47 +233,80 @@ void drawIOSElement(int x, int y, int w, int h, String text, bool selected) {
 
 void drawEyes() {
   int baseY = 42;
-  // Убираем random(), используем глобальные переменные
-  int spacing = currentSpacing; 
+  int spacing = currentSpacing;
   int x1 = (TFT_WIDTH - spacing) / 2;
   int x2 = x1 + spacing;
 
+  // Используем глобальные переменные как основу
   int eyeR = currentEyeR;
   int pupilR = currentPupilR;
 
   int dx = 0, dy = 0;
   bool closed = blinkNow;
 
+  // --- ЛОГИКА ЭМОЦИЙ ---
+  // Здесь мы модифицируем параметры в зависимости от эмоции
   switch (currentEmotion) {
-    case E_HAPPY: dy = -2; break;
-    case E_ANGRY: dy = 2; break;
-    case E_SLEEPY: closed = true; break;
-    case E_LOOK_LEFT: dx = -4; break;
-    case E_LOOK_RIGHT: dx = 4; break;
-    case E_LOOK_UP: dy = -4; break;
-    case E_LOOK_DOWN: dy = 4; break;
-    default: break;
+    case E_HAPPY:
+      dy = -2; // Зрачки чуть вверх
+      break;
+    case E_ANGRY:
+      // Брови будут нарисованы ниже
+      break;
+    case E_SLEEPY:
+      closed = true;
+      break;
+    case E_SURPRISE:
+      eyeR += 2;      // Белки глаз становятся больше
+      pupilR = max(2, pupilR - 2); // Зрачки сужаются
+      break;
+    case E_LOOK_LEFT:  dx = -5; break;
+    case E_LOOK_RIGHT: dx = 5;  break;
+    case E_LOOK_UP:    dy = -5; break;
+    case E_LOOK_DOWN:  dy = 5;  break;
+    case E_NEUTRAL:
+      // Остается без изменений
+      break;
   }
 
+  // --- ОТРИСОВКА ---
+  // Сначала всегда рисуем белки глаз
   canvas.fillCircle(x1, baseY, eyeR, ST7735_WHITE);
   canvas.fillCircle(x2, baseY, eyeR, ST7735_WHITE);
 
-  if (!closed) {
+  if (closed) {
+    // Рисуем "сонное" или "моргающее" веко
+    uint16_t bgColor = currentTheme->bot; // Берем цвет фона
+    canvas.fillRect(x1 - eyeR, baseY - eyeR, eyeR * 2, eyeR + 2, bgColor);
+    canvas.fillRect(x2 - eyeR, baseY - eyeR, eyeR * 2, eyeR + 2, bgColor);
+    canvas.drawFastHLine(x1 - eyeR + 1, baseY, eyeR * 2 - 2, ST7735_BLACK);
+    canvas.drawFastHLine(x2 - eyeR + 1, baseY, eyeR * 2 - 2, ST7735_BLACK);
+
+  } else {
+    // Рисуем открытые глаза: зрачок + мультяшный блик
     canvas.fillCircle(x1 + dx, baseY + dy, pupilR, ST7735_BLACK);
     canvas.fillCircle(x2 + dx, baseY + dy, pupilR, ST7735_BLACK);
-  } else {
-    canvas.drawFastHLine(x1 - eyeR/2, baseY, eyeR, ST7735_BLACK);
-    canvas.drawFastHLine(x2 - eyeR/2, baseY, eyeR, ST7735_BLACK);
+    
+    // Добавляем маленький белый блик
+    int highlightR = pupilR > 4 ? 2 : 1;
+    canvas.fillCircle(x1 + dx + highlightR, baseY + dy - highlightR, highlightR, ST7735_WHITE);
+    canvas.fillCircle(x2 + dx + highlightR, baseY + dy - highlightR, highlightR, ST7735_WHITE);
   }
 
+  // --- ДОПОЛНИТЕЛЬНЫЕ ЭЛЕМЕНТЫ ПОВЕРХ ГЛАЗ ---
   if (currentEmotion == E_ANGRY) {
-    canvas.drawLine(x1 - eyeR, baseY - eyeR, x1 + eyeR, baseY - eyeR/2, ST7735_BLACK);
-    canvas.drawLine(x2 - eyeR, baseY - eyeR/2, x2 + eyeR, baseY - eyeR, ST7735_BLACK);
+    // Рисуем "сердитые брови" - толстые линии
+    canvas.drawLine(x1 - eyeR/2, baseY - eyeR, x1 + eyeR/2, baseY - eyeR + 3, ST7735_BLACK);
+    canvas.drawLine(x1 - eyeR/2, baseY - eyeR-1, x1 + eyeR/2, baseY - eyeR + 2, ST7735_BLACK);
+    canvas.drawLine(x2 + eyeR/2, baseY - eyeR, x2 - eyeR/2, baseY - eyeR + 3, ST7735_BLACK);
+    canvas.drawLine(x2 + eyeR/2, baseY - eyeR-1, x2 - eyeR/2, baseY - eyeR + 2, ST7735_BLACK);
   }
 
   if (currentEmotion == E_HAPPY) {
-    canvas.drawCircle(x1, baseY + eyeR/2, eyeR/2, ST7735_BLACK);
-    canvas.drawCircle(x2, baseY + eyeR/2, eyeR/2, ST7735_BLACK);
+    // Рисуем "улыбающиеся щечки" с помощью круга,
+    // верхняя часть которого скрыта белком глаза
+    canvas.drawCircle(x1, baseY + eyeR/2 + 1, eyeR/2, ST7735_BLACK);
+    canvas.drawCircle(x2, baseY + eyeR/2 + 1, eyeR/2, ST7735_BLACK);
   }
 }
 
@@ -469,15 +502,15 @@ void loop() {
 
   // ----------------------------
   // Смена эмоций и параметров глаз
-  if (millis() - lastEmotionChange > 4000) {
+  if (millis() - lastEmotionChange > 10000) {
       // Пул эмоций с повышенным шансом на "милые"
       EyeEmotion emotionsPool[] = {
-        E_NEUTRAL, E_NEUTRAL, // Нейтральные
-        E_HAPPY, E_HAPPY, E_HAPPY, // Счастливые (х3 шанс)
-        E_SURPRISE, // Удивление
-        E_LOOK_LEFT, E_LOOK_RIGHT, E_LOOK_UP, E_LOOK_DOWN, // Взгляд по сторонам
-        E_SLEEPY // Сонные
-        // E_ANGRY мы просто убрали из пула
+        E_NEUTRAL, E_NEUTRAL,       // Нейтральные
+        E_HAPPY, E_HAPPY, E_HAPPY,  // Счастливые (х3 шанс)
+        E_SURPRISE,                 // Удивление
+        E_LOOK_LEFT, E_LOOK_RIGHT, E_LOOK_UP, E_LOOK_DOWN, // Взгляд
+        E_SLEEPY,                   // Сонные
+        E_ANGRY                     // Сердитые (вернули!)
       };
       currentEmotion = emotionsPool[random(sizeof(emotionsPool)/sizeof(EyeEmotion))];
       
