@@ -13,6 +13,10 @@ IdleMode idleMode = IDLE_EYES;
 unsigned long lastIdleSwitch = 0;
 #define IDLE_SWITCH_TIME 5000
 
+bool blinkNow = false;
+unsigned long blinkUntil = 0;
+
+
 enum EyeEmotion {
   E_NEUTRAL, E_HAPPY, E_ANGRY, E_SLEEPY, E_SURPRISE,
   E_LOOK_LEFT, E_LOOK_RIGHT, E_LOOK_UP, E_LOOK_DOWN
@@ -182,6 +186,23 @@ void playBirdSong() {
   }
 }
 
+void drawRain() {
+  for (int i = 0; i < 12; i++) {
+    int x = random(TFT_WIDTH);
+    int y = random(TFT_HEIGHT);
+    canvas.drawFastVLine(x, y, random(4, 10), RGB(180, 200, 255));
+  }
+}
+
+void drawSand() {
+  for (int i = 0; i < 25; i++) {
+    int x = random(TFT_WIDTH);
+    int y = random(TFT_HEIGHT);
+    canvas.drawPixel(x, y, RGB(220, 200, 140));
+  }
+}
+
+
 void drawCenteredText(int y, String text, const GFXfont* font) {
   int16_t x1, y1; uint16_t w, h;
   canvas.setFont(font);
@@ -215,6 +236,10 @@ void drawClock() {
     uint8_t b = (c1&0x1F) + ((c2&0x1F) - (c1&0x1F)) * y / TFT_HEIGHT;
     canvas.drawFastHLine(0, y, TFT_WIDTH, (r << 11) | (g << 5) | b);
   }
+  if (hum > 70) drawRain();
+  if (hum < 30) drawSand();
+
+
   if (isIdle) {
     int x1 = 45, y1 = 42, x2 = 115, y2 = 42, r = 14;
     canvas.fillCircle(x1, y1, r, ST7735_WHITE); canvas.fillCircle(x2, y2, r, ST7735_WHITE);
@@ -281,7 +306,7 @@ void drawEyes() {
   int pupilR = random(3, 6);
 
   int dx = 0, dy = 0;
-  bool closed = false;
+  bool closed = blinkNow;
 
   switch (currentEmotion) {
     case E_HAPPY: dy = -2; break;
@@ -348,13 +373,14 @@ void handleIR() {
     currentMode = MODE_CLOCK; irrecv.resume(); return;
   }
   
+  
   if (isIdle) {
-  if (idleMode == IDLE_EYES) {
-    drawEyes();
-  } else {
-    drawQuotesScreen();
+    isIdle = false;
+    lastActivity = now;
+    irrecv.resume();
+    return;
   }
-}
+
 
   lastActivity = now;
 
@@ -475,5 +501,14 @@ void loop() {
     updateThemeByEnv();
     lastSensor = millis();
   }
+  if (isIdle && millis() > blinkUntil && random(100) < 3) {
+    blinkNow = true;
+    blinkUntil = millis() + 120;
+  }
+  if (blinkNow && millis() > blinkUntil) {
+    blinkNow = false;
+  }
+
+  if (!isIdle) idleMode = IDLE_EYES;
 
 }
