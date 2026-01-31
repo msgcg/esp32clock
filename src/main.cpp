@@ -158,27 +158,27 @@ void updateThemeByEnv() {
     return;
   }
 
-  if (temp > 28) {
+  else if (temp > 28) {
     currentTheme = &thAutumn; // жарко (рыжая)
     return;
   }
 
-  if (temp < 10) {
+  else if (temp < 15) {
     currentTheme = &thWinter;
     return;
   }
 
-  if (hum > 70) {
+  else if (hum > 70) {
     currentTheme = &thSpring; // влажно / дождь
     return;
   }
 
-  if (hum < 30) {
+  else if (hum < 30) {
     currentTheme = &thSummer; // сухо / песок
     return;
   }
 
-  currentTheme = &thSpring; // день
+  else currentTheme = &thSpring; // день
 }
 
 void updateTime() {
@@ -284,76 +284,77 @@ void drawEyes() {
   int x1 = (TFT_WIDTH - spacing) / 2;
   int x2 = x1 + spacing;
 
-  // Используем глобальные переменные как основу
   int eyeR = currentEyeR;
   int pupilR = currentPupilR;
-
   int dx = 0, dy = 0;
   bool closed = blinkNow;
 
   // --- ЛОГИКА ЭМОЦИЙ ---
-  // Здесь мы модифицируем параметры в зависимости от эмоции
   switch (currentEmotion) {
     case E_HAPPY:
-      dy = -2; // Зрачки чуть вверх
-      break;
-    case E_ANGRY:
-      // Брови будут нарисованы ниже
+      dy = -2;
       break;
     case E_SLEEPY:
       closed = true;
       break;
     case E_SURPRISE:
-      eyeR += 2;      // Белки глаз становятся больше
-      pupilR = max(2, pupilR - 2); // Зрачки сужаются
+      eyeR += 2;
+      pupilR = max(2, pupilR - 2);
       break;
-    case E_LOOK_LEFT:  dx = -5; break;
-    case E_LOOK_RIGHT: dx = 5;  break;
-    case E_LOOK_UP:    dy = -5; break;
-    case E_LOOK_DOWN:  dy = 5;  break;
-    case E_NEUTRAL:
-      // Остается без изменений
-      break;
+    case E_LOOK_LEFT:   dx = -5; break;
+    case E_LOOK_RIGHT:  dx = 5;  break;
+    case E_LOOK_UP:     dy = -5; break;
+    case E_LOOK_DOWN:   dy = 5;  break;
+    default: break;
   }
 
-  // --- ОТРИСОВКА ---
-  // Сначала всегда рисуем белки глаз
-  canvas.fillCircle(x1, baseY, eyeR, ST7735_WHITE);
-  canvas.fillCircle(x2, baseY, eyeR, ST7735_WHITE);
-
+  // --- ОТРИСОВКА ГЛАЗ ---
   if (closed) {
-    // Рисуем "сонное" или "моргающее" веко
-    uint16_t bgColor = currentTheme->bot; // Берем цвет фона
-    canvas.fillRect(x1 - eyeR, baseY - eyeR, eyeR * 2, eyeR + 2, bgColor);
-    canvas.fillRect(x2 - eyeR, baseY - eyeR, eyeR * 2, eyeR + 2, bgColor);
-    canvas.drawFastHLine(x1 - eyeR + 1, baseY, eyeR * 2 - 2, ST7735_BLACK);
-    canvas.drawFastHLine(x2 - eyeR + 1, baseY, eyeR * 2 - 2, ST7735_BLACK);
-
+    // Прищур: рисуем ПОЛНЫЙ белый круг, затем закрываем ВЕРХНЮЮ часть чёрным прямоугольником
+    canvas.fillCircle(x1, baseY, eyeR, ST7735_WHITE);
+    canvas.fillCircle(x2, baseY, eyeR, ST7735_WHITE);
+    
+    // Закрываем верхнюю половину глаза (от -eyeR до -eyeR/2)
+    canvas.fillRect(x1 - eyeR, baseY - eyeR, eyeR * 2, eyeR - 1, ST7735_BLACK);
+    canvas.fillRect(x2 - eyeR, baseY - eyeR, eyeR * 2, eyeR - 1, ST7735_BLACK);
+    
+    // Добавляем тонкую белую линию-бликовку по центру прищура
+    canvas.drawFastHLine(x1 - eyeR + 2, baseY, eyeR * 2 - 4, ST7735_WHITE);
+    canvas.drawFastHLine(x2 - eyeR + 2, baseY, eyeR * 2 - 4, ST7735_WHITE);
+    
   } else {
-    // Рисуем открытые глаза: зрачок + мультяшный блик
+    // Открытые глаза
+    canvas.fillCircle(x1, baseY, eyeR, ST7735_WHITE);
+    canvas.fillCircle(x2, baseY, eyeR, ST7735_WHITE);
+    
+    // Зрачки
     canvas.fillCircle(x1 + dx, baseY + dy, pupilR, ST7735_BLACK);
     canvas.fillCircle(x2 + dx, baseY + dy, pupilR, ST7735_BLACK);
     
-    // Добавляем маленький белый блик
+    // Блик (только при открытых глазах!)
     int highlightR = pupilR > 4 ? 2 : 1;
     canvas.fillCircle(x1 + dx + highlightR, baseY + dy - highlightR, highlightR, ST7735_WHITE);
     canvas.fillCircle(x2 + dx + highlightR, baseY + dy - highlightR, highlightR, ST7735_WHITE);
   }
 
-  // --- ДОПОЛНИТЕЛЬНЫЕ ЭЛЕМЕНТЫ ПОВЕРХ ГЛАЗ ---
-  if (currentEmotion == E_ANGRY) {
-    // Рисуем "сердитые брови" - толстые линии
-    canvas.drawLine(x1 - eyeR/2, baseY - eyeR, x1 + eyeR/2, baseY - eyeR + 3, ST7735_BLACK);
-    canvas.drawLine(x1 - eyeR/2, baseY - eyeR-1, x1 + eyeR/2, baseY - eyeR + 2, ST7735_BLACK);
-    canvas.drawLine(x2 + eyeR/2, baseY - eyeR, x2 - eyeR/2, baseY - eyeR + 3, ST7735_BLACK);
-    canvas.drawLine(x2 + eyeR/2, baseY - eyeR-1, x2 - eyeR/2, baseY - eyeR + 2, ST7735_BLACK);
-  }
+  // --- ДОП. ЭЛЕМЕНТЫ (ТОЛЬКО при ОТКРЫТЫХ глазах!) ---
+  if (!closed) {
+    if (currentEmotion == E_ANGRY) {
+      // Брови чуть ВЫШЕ белка глаза
+      int browY = baseY - eyeR - 3;
+      // Левая бровь (наклон вниз направо)
+      canvas.drawLine(x1 - eyeR/2 + 1, browY, x1 + eyeR/2 - 1, browY + 3, ST7735_BLACK);
+      canvas.drawLine(x1 - eyeR/2, browY-1, x1 + eyeR/2, browY + 2, ST7735_BLACK);
+      // Правая бровь (наклон вниз налево)
+      canvas.drawLine(x2 + eyeR/2 - 1, browY, x2 - eyeR/2 + 1, browY + 3, ST7735_BLACK);
+      canvas.drawLine(x2 + eyeR/2, browY-1, x2 - eyeR/2, browY + 2, ST7735_BLACK);
+    }
 
-  if (currentEmotion == E_HAPPY) {
-    // Рисуем "улыбающиеся щечки" с помощью круга,
-    // верхняя часть которого скрыта белком глаза
-    canvas.drawCircle(x1, baseY + eyeR/2 + 1, eyeR/2, ST7735_BLACK);
-    canvas.drawCircle(x2, baseY + eyeR/2 + 1, eyeR/2, ST7735_BLACK);
+    if (currentEmotion == E_HAPPY) {
+      // Щёчки — только нижняя дуга
+      canvas.drawCircleHelper(x1, baseY + eyeR/2 + 1, eyeR/2, 0x0C, ST7735_BLACK);
+      canvas.drawCircleHelper(x2, baseY + eyeR/2 + 1, eyeR/2, 0x0C, ST7735_BLACK);
+    }
   }
 }
 
@@ -584,12 +585,12 @@ void loop() {
   }
 
   // Моргание глаз
-  if (millis() > blinkUntil && random(100) < 3) {
-      blinkNow = true;
-      blinkUntil = millis() + 120;
-  }
-  if (blinkNow && millis() > blinkUntil) {
+  if (!blinkNow && millis() > blinkUntil && random(100) < 3) {
+    blinkNow = true;
+    blinkUntil = millis() + 120; // 120 мс = прищур
+  } else if (blinkNow && millis() > blinkUntil) {
       blinkNow = false;
+      blinkUntil = millis() + 3000; // следующее моргание через 3 сек
   }
   // ----------------------------
 
