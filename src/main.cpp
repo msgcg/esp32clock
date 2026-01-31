@@ -8,11 +8,14 @@
 #include <DHT.h>
 #include "config.h"
 
+// ✅ ПРАВИЛЬНЫЙ МАКРОС ДЛЯ ВАШЕГО ДИСПЛЕЯ (BGR565 + инверсия):
+#define RGB(r, g, b) (uint16_t)(0xFFFF - ((((b) & 0xF8) << 8) | (((g) & 0xFC) << 3) | ((r) >> 3)))
+
 enum IdleMode { IDLE_EYES, IDLE_QUOTE };
 IdleMode idleMode = IDLE_EYES;
 unsigned long lastIdleSwitch = 0;
 #define IDLE_SWITCH_TIME 5000
-#define HEART_COLOR RGB(227, 27, 35)
+#define HEART_COLOR RGB(227, 27, 35)  // Теперь будет ❤️ красным!
 bool blinkNow = false;
 unsigned long blinkUntil = 0;
 
@@ -70,15 +73,115 @@ decode_results results;
 DHT dht(PIN_DHT, DHT11);
 GFXcanvas16 canvas(TFT_WIDTH, TFT_HEIGHT);
 
-#define RGB(r, g, b) (uint16_t)((((r) & 0xF8) << 8) | (((g) & 0xFC) << 3) | ((b) >> 3))
-
 struct Theme { uint16_t top, bot, text, accent, panel, border; };
-Theme thNight  = { RGB(10,15,30),  RGB(5,8,15),   RGB(220,230,255), RGB(255,220,100), RGB(30,40,60),  RGB(80,100,150) };
-Theme thWinter = { RGB(40,60,100), RGB(20,30,60), RGB(230,240,255), RGB(150,220,255), RGB(40,50,80),  RGB(120,150,200) };
-Theme thSpring = { RGB(30,60,30),  RGB(15,35,15), RGB(220,255,220), RGB(120,240,120), RGB(35,55,35),  RGB(100,180,100) };
-Theme thSummer = { RGB(20,50,100), RGB(10,30,70), RGB(240,255,255), RGB(255,200,80),  RGB(25,45,85),  RGB(80,140,200) };
-Theme thAutumn = { RGB(60,35,15),  RGB(30,20,10), RGB(255,240,220), RGB(255,160,60),  RGB(50,35,20),  RGB(150,90,40) };
-Theme* currentTheme = &thNight;
+// ============ СВЕТЛЫЕ ДНЕВНЫЕ ТЕМЫ (9:00 - 17:59) ============
+Theme thWinterLight = { 
+  RGB(220, 240, 255), RGB(180, 210, 240), // Светлый голубой градиент
+  RGB(40, 60, 90),    // Тёмно-синий текст (контраст!)
+  RGB(100, 180, 255), // Голубой акцент
+  RGB(200, 225, 250), // Светлая панель
+  RGB(140, 170, 210)  // Мягкая граница
+};
+
+Theme thSpringLight = { 
+  RGB(220, 255, 220), RGB(190, 240, 190), // Светлый зелёный градиент
+  RGB(50, 80, 50),    // Тёмно-зелёный текст
+  RGB(120, 220, 120), // Сочный зелёный акцент
+  RGB(210, 245, 210),
+  RGB(120, 180, 120)
+};
+
+Theme thSummerLight = { 
+  RGB(200, 235, 255), RGB(170, 215, 245), // Светлый небесный градиент
+  RGB(30, 50, 80),    // Тёмно-синий текст
+  RGB(255, 200, 100), // Тёплый солнечный акцент
+  RGB(190, 225, 250),
+  RGB(110, 150, 200)
+};
+
+Theme thAutumnLight = { 
+  RGB(255, 245, 220), RGB(245, 230, 200), // Светлый кремовый градиент
+  RGB(70, 50, 30),    // Тёмно-коричневый текст
+  RGB(255, 150, 60),  // Яркий оранжевый акцент
+  RGB(250, 240, 220),
+  RGB(160, 110, 70)
+};
+
+// ============ ТЁМНЫЕ НОЧНЫЕ ТЕМЫ (22:00 - 5:59) ============
+Theme thWinterDark = { 
+  RGB(30, 50, 80), RGB(20, 35, 60),       // Тёмно-синий градиент
+  RGB(180, 220, 255), // Светлый голубой текст
+  RGB(120, 190, 255), // Мягкий голубой акцент
+  RGB(40, 60, 90),
+  RGB(80, 110, 150)
+};
+
+Theme thSpringDark = { 
+  RGB(35, 60, 35), RGB(25, 45, 25),       // Тёмно-зелёный градиент
+  RGB(200, 240, 200), // Светлый зелёный текст
+  RGB(130, 230, 130), // Яркий зелёный акцент
+  RGB(45, 70, 45),
+  RGB(100, 170, 100)
+};
+
+Theme thSummerDark = { 
+  RGB(25, 55, 95), RGB(18, 40, 75),       // Тёмно-голубой градиент
+  RGB(210, 245, 255), // Светлый голубой текст
+  RGB(255, 210, 120), // Тёплый янтарный акцент
+  RGB(35, 65, 105),
+  RGB(90, 140, 190)
+};
+
+Theme thAutumnDark = { 
+  RGB(65, 45, 30), RGB(45, 30, 20),       // Тёмно-коричневый градиент
+  RGB(255, 230, 200), // Светлый кремовый текст
+  RGB(255, 170, 80),  // Тёплый оранжевый акцент
+  RGB(75, 55, 40),
+  RGB(150, 100, 60)
+};
+
+// ============ СПЕЦИАЛЬНАЯ ТЁПЛАЯ НОЧНАЯ ТЕМА (без синего!) ============
+Theme thNightWarm = { 
+  RGB(15, 10, 10), RGB(5, 3, 3),          // Тёмно-бордовый градиент (0% синего!)
+  RGB(230, 200, 170), // Кремовый текст
+  RGB(255, 180, 100), // Мягкий янтарь
+  RGB(25, 18, 18),
+  RGB(50, 40, 40)
+};
+
+// ============ ВЕЧЕРНИЕ ТЕМЫ (18:00 - 21:59) — плавный переход ============
+Theme thWinterEvening = { 
+  RGB(100, 130, 170), RGB(70, 95, 140),
+  RGB(200, 225, 250),
+  RGB(130, 190, 255),
+  RGB(110, 140, 180),
+  RGB(100, 130, 170)
+};
+
+Theme thSpringEvening = { 
+  RGB(100, 140, 100), RGB(75, 110, 75),
+  RGB(210, 240, 210),
+  RGB(140, 225, 140),
+  RGB(110, 150, 110),
+  RGB(100, 140, 100)
+};
+
+Theme thSummerEvening = { 
+  RGB(80, 120, 170), RGB(60, 95, 145),
+  RGB(220, 245, 255),
+  RGB(255, 205, 130),
+  RGB(90, 130, 180),
+  RGB(85, 125, 175)
+};
+
+Theme thAutumnEvening = { 
+  RGB(130, 100, 70), RGB(100, 75, 50),
+  RGB(245, 225, 200),
+  RGB(255, 165, 90),
+  RGB(140, 110, 80),
+  RGB(135, 105, 75)
+};
+Theme* currentTheme = &thSummerLight;
 
 enum AppMode { MODE_CLOCK, MODE_MENU, MODE_SET_TIME, MODE_SET_ALARM, MODE_QUOTES, MODE_RING };
 AppMode currentMode = MODE_CLOCK;
@@ -164,33 +267,45 @@ void toggleLamp() {
 
 void updateThemeByEnv() {
   int h = rtc.hour;
-
-  if (h >= 22 || h < 6) {
-    currentTheme = &thNight;
+  
+  // 🌙 ГЛУБОКАЯ НОЧЬ (23:00 - 5:59) — тёплая тема БЕЗ синего спектра
+  if (h >= 23 || h < 6) {
+    currentTheme = &thNightWarm;
     return;
   }
-
-  else if (temp > 28) {
-    currentTheme = &thAutumn; // жарко (рыжая)
+  
+  // 🌆 ВЕЧЕР (18:00 - 22:59) — тёмные, но не агрессивные тона
+  if (h >= 18 && h < 23) {
+    if (temp > 28) currentTheme = &thAutumnEvening;
+    else if (temp < 15) currentTheme = &thWinterEvening;
+    else if (hum > 70) currentTheme = &thSpringEvening;
+    else if (hum < 30) currentTheme = &thSummerEvening;
+    else currentTheme = &thSpringEvening;
     return;
   }
-
-  else if (temp < 15) {
-    currentTheme = &thWinter;
+  
+  // 🌅 РАННЕЕ УТРО (6:00 - 8:59) — мягкие средние тона
+  if (h >= 6 && h < 9) {
+    if (temp > 28) currentTheme = &thAutumnDark;
+    else if (temp < 15) currentTheme = &thWinterDark;
+    else if (hum > 70) currentTheme = &thSpringDark;
+    else if (hum < 30) currentTheme = &thSummerDark;
+    else currentTheme = &thSpringDark;
     return;
   }
-
-  else if (hum > 70) {
-    currentTheme = &thSpring; // влажно / дождь
+  
+  // ☀️ ДЕНЬ (9:00 - 17:59) — СВЕТЛЫЕ тона с тёмным текстом для контраста!
+  if (h >= 9 && h < 18) {
+    if (temp > 28) currentTheme = &thAutumnLight;
+    else if (temp < 15) currentTheme = &thWinterLight;
+    else if (hum > 70) currentTheme = &thSpringLight;
+    else if (hum < 30) currentTheme = &thSummerLight;
+    else currentTheme = &thSpringLight;
     return;
   }
-
-  else if (hum < 30) {
-    currentTheme = &thSummer; // сухо / песок
-    return;
-  }
-
-  else currentTheme = &thSpring; // день
+  
+  // 🌇 ПОЗДНИЙ ВЕЧЕР (18:00 - 22:59) — уже обработан выше
+  currentTheme = &thSpringLight; // fallback
 }
 
 void updateTime() {
@@ -249,18 +364,39 @@ void playBirdSong() {
 }
 
 void drawRain() {
+  bool isLight = (currentTheme == &thWinterLight || currentTheme == &thSpringLight || 
+                  currentTheme == &thSummerLight || currentTheme == &thAutumnLight);
+  
   for (int i = 0; i < 12; i++) {
     int x = random(TFT_WIDTH);
     int y = random(TFT_HEIGHT);
-    canvas.drawFastVLine(x, y, random(4, 10), RGB(180, 200, 255));
+    int len = random(4, 10);
+    
+    if (isLight) {
+      // Днём: тёмные капли на светлом фоне
+      canvas.drawFastVLine(x, y, len, RGB(80, 120, 180));
+    } else {
+      // Ночью: светлые капли на тёмном фоне
+      canvas.drawFastVLine(x, y, len, RGB(160, 200, 255));
+    }
   }
 }
 
 void drawSand() {
+  bool isLight = (currentTheme == &thWinterLight || currentTheme == &thSpringLight || 
+                  currentTheme == &thSummerLight || currentTheme == &thAutumnLight);
+  
   for (int i = 0; i < 25; i++) {
     int x = random(TFT_WIDTH);
     int y = random(TFT_HEIGHT);
-    canvas.drawPixel(x, y, RGB(220, 200, 140));
+    
+    if (isLight) {
+      // Днём: тёмные песчинки
+      canvas.drawPixel(x, y, RGB(150, 130, 100));
+    } else {
+      // Ночью: светлые песчинки
+      canvas.drawPixel(x, y, RGB(220, 200, 160));
+    }
   }
 }
 
@@ -481,6 +617,7 @@ void drawEyes() {
 }
 
 void drawClock() {
+  // Градиент для ВСЕХ тем (светлых и тёмных)
   uint16_t c1 = currentTheme->top, c2 = currentTheme->bot;
   for (int y = 0; y < TFT_HEIGHT; y++) {
     uint8_t r = ((c1>>11)&0x1F) + (((c2>>11)&0x1F) - ((c1>>11)&0x1F)) * y / TFT_HEIGHT;
@@ -488,20 +625,28 @@ void drawClock() {
     uint8_t b = (c1&0x1F) + ((c2&0x1F) - (c1&0x1F)) * y / TFT_HEIGHT;
     canvas.drawFastHLine(0, y, TFT_WIDTH, (r << 11) | (g << 5) | b);
   }
+  
+  // Эффекты работают ВСЕГДА
   if (hum > 70) drawRain();
   if (hum < 30) drawSand();
 
-
   if (isIdle) {
-      drawEyes();
+    drawEyes();
   } else {
     canvas.setTextColor(currentTheme->accent);
     char buf[6]; snprintf(buf, 6, "%02d:%02d", rtc.hour, rtc.minute);
     drawCenteredText(50, buf, FONT_TIME);
     canvas.setTextColor(currentTheme->text);
     drawCenteredText(75, String((int)temp) + "C " + String((int)hum) + "%", FONT_TEXT);
-    if (singleAlarm.active) canvas.fillCircle(10, 10, 3, RGB(255, 50, 50));
-    if (lampState) canvas.fillCircle(150, 10, 4, RGB(255, 220, 100));
+    
+    // Индикаторы с адаптивными цветами
+    if (singleAlarm.active) {
+      canvas.fillCircle(10, 10, 3, RGB(255, 80, 80)); // Мягкий красный
+    }
+    
+    if (lampState) {
+      canvas.fillCircle(150, 10, 4, RGB(255, 220, 100)); // Янтарный
+    }
   }
 }
 
@@ -633,7 +778,9 @@ void handleIR() {
         rtc.second = 0; 
         
         // ОБЯЗАТЕЛЬНО: обновляем метку времени на текущий момент
-        rtc.lastMillis = millis(); 
+        rtc.lastMillis = millis();
+        
+        updateThemeByEnv();
         
         currentMode = MODE_CLOCK; 
         showPopup("Сохранено!"); 
@@ -677,6 +824,7 @@ void setup() {
 }
 
 void loop() {
+
   updateTime();
   checkAlarm();
   handleIR();
