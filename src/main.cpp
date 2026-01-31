@@ -183,11 +183,30 @@ void updateThemeByEnv() {
 
 void updateTime() {
   unsigned long now = millis();
-  if (now - rtc.lastMillis >= 1000) {
-    rtc.second++; rtc.lastMillis = now;
-    if (rtc.second >= 60) { rtc.second = 0; rtc.minute++; alarmSkipToday = false; }
-    if (rtc.minute >= 60) { rtc.minute = 0; rtc.hour++; }
-    if (rtc.hour >= 24) { rtc.hour = 0; rtc.month++; if(rtc.month > 12) rtc.month = 1; }
+  unsigned long delta = now - rtc.lastMillis;
+
+  if (delta >= 1000) {
+    int secondsPassed = delta / 1000;
+    rtc.lastMillis += secondsPassed * 1000;
+
+    rtc.second += secondsPassed;
+
+    while (rtc.second >= 60) {
+      rtc.second -= 60;
+      rtc.minute++;
+      alarmSkipToday = false;
+    }
+
+    while (rtc.minute >= 60) {
+      rtc.minute -= 60;
+      rtc.hour++;
+    }
+
+    while (rtc.hour >= 24) {
+      rtc.hour -= 24;
+      rtc.month++;
+      if (rtc.month > 12) rtc.month = 1;
+    }
   }
 }
 
