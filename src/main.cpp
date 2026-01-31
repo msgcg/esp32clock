@@ -12,7 +12,7 @@ enum IdleMode { IDLE_EYES, IDLE_QUOTE };
 IdleMode idleMode = IDLE_EYES;
 unsigned long lastIdleSwitch = 0;
 #define IDLE_SWITCH_TIME 5000
-
+#define HEART_COLOR RGB(227, 27, 35)
 bool blinkNow = false;
 unsigned long blinkUntil = 0;
 
@@ -21,8 +21,20 @@ int currentPupilR = 5;
 int currentSpacing = 65;
 
 enum EyeEmotion {
-  E_NEUTRAL, E_HAPPY, E_ANGRY, E_SLEEPY, E_SURPRISE,
-  E_LOOK_LEFT, E_LOOK_RIGHT, E_LOOK_UP, E_LOOK_DOWN
+  E_NEUTRAL,      // 0: нейтральное
+  E_HAPPY,        // 1: счастливое (щёчки + зрачки вверх)
+  E_ANGRY,        // 2: злой (брови вниз, зрачки вниз)
+  E_SLEEPY,       // 3: сонный (полный прищур)
+  E_SURPRISE,     // 4: удивлённый (большие глаза, маленькие зрачки, брови вверх)
+  E_LOOK_LEFT,    // 5: смотрит влево
+  E_LOOK_RIGHT,   // 6: смотрит вправо
+  E_LOOK_UP,      // 7: смотрит вверх
+  E_LOOK_DOWN,    // 8: смотрит вниз
+  E_SAD,          // 9: грустный (брови вверх, зрачки вниз)
+  E_WINK_LEFT,    // 10: подмигивает левым глазом
+  E_WINK_RIGHT,   // 11: подмигивает правым глазом
+  E_IN_LOVE,      // 12: влюблённый (сердечки вместо зрачков)
+  E_TIRED         // 13: уставший (лёгкий прищур)
 };
 EyeEmotion currentEmotion = E_NEUTRAL;
 unsigned long lastEmotionChange = 0;
@@ -287,74 +299,184 @@ void drawEyes() {
   int eyeR = currentEyeR;
   int pupilR = currentPupilR;
   int dx = 0, dy = 0;
-  bool closed = blinkNow;
+  bool closedLeft = blinkNow;
+  bool closedRight = blinkNow;
+  bool drawPupils = true;
+  bool drawHighlights = true;
+  bool drawCheeks = false;
+  int browOffset = 0; // 0 = нейтрально, -3 = злой, +3 = грустный
 
   // --- ЛОГИКА ЭМОЦИЙ ---
   switch (currentEmotion) {
     case E_HAPPY:
       dy = -2;
+      drawCheeks = true;
       break;
+      
+    case E_ANGRY:
+      browOffset = -3; // брови опущены вниз
+      dy = 2;          // зрачки вниз (сердитый взгляд)
+      break;
+      
     case E_SLEEPY:
-      closed = true;
+      closedLeft = true;
+      closedRight = true;
+      drawPupils = false;
+      drawHighlights = false;
       break;
+      
     case E_SURPRISE:
-      eyeR += 2;
-      pupilR = max(2, pupilR - 2);
+      eyeR += 3;               // глаза широко раскрыты
+      pupilR = max(2, pupilR - 3); // зрачки сужены от удивления
+      dy = -3;
       break;
-    case E_LOOK_LEFT:   dx = -5; break;
-    case E_LOOK_RIGHT:  dx = 5;  break;
-    case E_LOOK_UP:     dy = -5; break;
-    case E_LOOK_DOWN:   dy = 5;  break;
-    default: break;
+      
+    case E_LOOK_LEFT:
+      dx = -5;
+      break;
+      
+    case E_LOOK_RIGHT:
+      dx = 5;
+      break;
+      
+    case E_LOOK_UP:
+      dy = -6;
+      break;
+      
+    case E_LOOK_DOWN:
+      dy = 6;
+      break;
+      
+    case E_SAD:
+      browOffset = +3;  // брови приподняты (грустные)
+      dy = 4;           // зрачки смотрят вниз
+      break;
+      
+    case E_WINK_LEFT:
+      closedLeft = true;
+      closedRight = false;
+      drawPupils = true;
+      drawHighlights = true;
+      dy = -2; // правый глаз "улыбается"
+      break;
+      
+    case E_WINK_RIGHT:
+      closedLeft = false;
+      closedRight = true;
+      drawPupils = true;
+      drawHighlights = true;
+      dy = -2; // левый глаз "улыбается"
+      break;
+      
+    case E_IN_LOVE:
+      // Сердечки вместо зрачков — рисуем позже отдельно
+      drawPupils = false;
+      drawHighlights = false;
+      dy = -2;
+      break;
+      
+    case E_TIRED:
+      // Лёгкий постоянный прищур
+      closedLeft = true;
+      closedRight = true;
+      drawPupils = true;
+      drawHighlights = false;
+      dy = 2;
+      break;
+      
+    case E_NEUTRAL:
+    default:
+      break;
   }
 
-  // --- ОТРИСОВКА ГЛАЗ ---
-  if (closed) {
-    // Прищур: рисуем ПОЛНЫЙ белый круг, затем закрываем ВЕРХНЮЮ часть чёрным прямоугольником
+  // --- ОТРИСОВКА ЛЕВОГО ГЛАЗА ---
+  if (closedLeft) {
+    // Прищур: полный белый круг + чёрная "крышка" сверху
     canvas.fillCircle(x1, baseY, eyeR, ST7735_WHITE);
-    canvas.fillCircle(x2, baseY, eyeR, ST7735_WHITE);
-    
-    // Закрываем верхнюю половину глаза (от -eyeR до -eyeR/2)
     canvas.fillRect(x1 - eyeR, baseY - eyeR, eyeR * 2, eyeR - 1, ST7735_BLACK);
-    canvas.fillRect(x2 - eyeR, baseY - eyeR, eyeR * 2, eyeR - 1, ST7735_BLACK);
-    
-    // Добавляем тонкую белую линию-бликовку по центру прищура
     canvas.drawFastHLine(x1 - eyeR + 2, baseY, eyeR * 2 - 4, ST7735_WHITE);
-    canvas.drawFastHLine(x2 - eyeR + 2, baseY, eyeR * 2 - 4, ST7735_WHITE);
-    
   } else {
-    // Открытые глаза
     canvas.fillCircle(x1, baseY, eyeR, ST7735_WHITE);
-    canvas.fillCircle(x2, baseY, eyeR, ST7735_WHITE);
-    
-    // Зрачки
-    canvas.fillCircle(x1 + dx, baseY + dy, pupilR, ST7735_BLACK);
-    canvas.fillCircle(x2 + dx, baseY + dy, pupilR, ST7735_BLACK);
-    
-    // Блик (только при открытых глазах!)
-    int highlightR = pupilR > 4 ? 2 : 1;
-    canvas.fillCircle(x1 + dx + highlightR, baseY + dy - highlightR, highlightR, ST7735_WHITE);
-    canvas.fillCircle(x2 + dx + highlightR, baseY + dy - highlightR, highlightR, ST7735_WHITE);
+    if (drawPupils) {
+      canvas.fillCircle(x1 + dx, baseY + dy, pupilR, ST7735_BLACK);
+      if (drawHighlights) {
+        int hR = pupilR > 4 ? 2 : 1;
+        canvas.fillCircle(x1 + dx + hR, baseY + dy - hR, hR, ST7735_WHITE);
+      }
+    }
+    // Сердечко для влюблённого состояния
+    if (currentEmotion == E_IN_LOVE) {
+      int hSize = pupilR + 1;
+      canvas.fillCircle(x1 + dx - hSize/2, baseY + dy - hSize/3, hSize/2, HEART_COLOR);
+      canvas.fillCircle(x1 + dx + hSize/2, baseY + dy - hSize/3, hSize/2, HEART_COLOR);
+      canvas.fillTriangle(
+        x1 + dx - hSize/2, baseY + dy + hSize/4,
+        x1 + dx + hSize/2, baseY + dy + hSize/4,
+        x1 + dx, baseY + dy + hSize/2,
+        HEART_COLOR
+      );
+    }
   }
 
-  // --- ДОП. ЭЛЕМЕНТЫ (ТОЛЬКО при ОТКРЫТЫХ глазах!) ---
-  if (!closed) {
-    if (currentEmotion == E_ANGRY) {
-      // Брови чуть ВЫШЕ белка глаза
-      int browY = baseY - eyeR - 3;
-      // Левая бровь (наклон вниз направо)
-      canvas.drawLine(x1 - eyeR/2 + 1, browY, x1 + eyeR/2 - 1, browY + 3, ST7735_BLACK);
-      canvas.drawLine(x1 - eyeR/2, browY-1, x1 + eyeR/2, browY + 2, ST7735_BLACK);
-      // Правая бровь (наклон вниз налево)
-      canvas.drawLine(x2 + eyeR/2 - 1, browY, x2 - eyeR/2 + 1, browY + 3, ST7735_BLACK);
-      canvas.drawLine(x2 + eyeR/2, browY-1, x2 - eyeR/2, browY + 2, ST7735_BLACK);
+  // --- ОТРИСОВКА ПРАВОГО ГЛАЗА ---
+  if (closedRight) {
+    canvas.fillCircle(x2, baseY, eyeR, ST7735_WHITE);
+    canvas.fillRect(x2 - eyeR, baseY - eyeR, eyeR * 2, eyeR - 1, ST7735_BLACK);
+    canvas.drawFastHLine(x2 - eyeR + 2, baseY, eyeR * 2 - 4, ST7735_WHITE);
+  } else {
+    canvas.fillCircle(x2, baseY, eyeR, ST7735_WHITE);
+    if (drawPupils) {
+      canvas.fillCircle(x2 + dx, baseY + dy, pupilR, ST7735_BLACK);
+      if (drawHighlights) {
+        int hR = pupilR > 4 ? 2 : 1;
+        canvas.fillCircle(x2 + dx + hR, baseY + dy - hR, hR, ST7735_WHITE);
+      }
     }
+    if (currentEmotion == E_IN_LOVE) {
+      int hSize = pupilR + 1;
+      canvas.fillCircle(x2 + dx - hSize/2, baseY + dy - hSize/3, hSize/2, HEART_COLOR);
+      canvas.fillCircle(x2 + dx + hSize/2, baseY + dy - hSize/3, hSize/2, HEART_COLOR);
+      canvas.fillTriangle(
+        x2 + dx - hSize/2, baseY + dy + hSize/4,
+        x2 + dx + hSize/2, baseY + dy + hSize/4,
+        x2 + dx, baseY + dy + hSize/2,
+        HEART_COLOR
+      );
+    }
+  }
 
-    if (currentEmotion == E_HAPPY) {
-      // Щёчки — только нижняя дуга
-      canvas.drawCircleHelper(x1, baseY + eyeR/2 + 1, eyeR/2, 0x0C, ST7735_BLACK);
-      canvas.drawCircleHelper(x2, baseY + eyeR/2 + 1, eyeR/2, 0x0C, ST7735_BLACK);
+  // --- БРОВИ (только при открытых глазах) ---
+  if (!closedLeft || !closedRight) {
+    int browY = baseY - eyeR - 3 + browOffset;
+    
+    if (currentEmotion == E_ANGRY) {
+      // Толстые злые брови с выраженным наклоном
+      canvas.drawLine(x1 - eyeR/2 + 1, browY + 2, x1 + eyeR/2 - 1, browY - 1, ST7735_BLACK);
+      canvas.drawLine(x1 - eyeR/2, browY + 1, x1 + eyeR/2, browY - 2, ST7735_BLACK);
+      canvas.drawLine(x2 + eyeR/2 - 1, browY + 2, x2 - eyeR/2 + 1, browY - 1, ST7735_BLACK);
+      canvas.drawLine(x2 + eyeR/2, browY + 1, x2 - eyeR/2, browY - 2, ST7735_BLACK);
+    } 
+    else if (currentEmotion == E_SAD) {
+      // Грустные приподнятые брови
+      canvas.drawLine(x1 - eyeR/2 + 1, browY - 2, x1 + eyeR/2 - 1, browY + 1, ST7735_BLACK);
+      canvas.drawLine(x1 - eyeR/2, browY - 1, x1 + eyeR/2, browY + 2, ST7735_BLACK);
+      canvas.drawLine(x2 + eyeR/2 - 1, browY - 2, x2 - eyeR/2 + 1, browY + 1, ST7735_BLACK);
+      canvas.drawLine(x2 + eyeR/2, browY - 1, x2 - eyeR/2, browY + 2, ST7735_BLACK);
     }
+    else if (currentEmotion == E_SURPRISE) {
+      // Удивлённые высоко поднятые брови
+      browY -= 5;
+      canvas.drawFastHLine(x1 - eyeR/2, browY, eyeR, ST7735_BLACK);
+      canvas.drawFastHLine(x1 - eyeR/2, browY+1, eyeR, ST7735_BLACK);
+      canvas.drawFastHLine(x2 - eyeR/2, browY, eyeR, ST7735_BLACK);
+      canvas.drawFastHLine(x2 - eyeR/2, browY+1, eyeR, ST7735_BLACK);
+    }
+  }
+
+  // --- ЩЁЧКИ (только для счастливых эмоций) ---
+  if (drawCheeks && (!closedLeft || !closedRight)) {
+    canvas.drawCircleHelper(x1, baseY + eyeR/2 + 1, eyeR/2, 0x0C, ST7735_BLACK);
+    canvas.drawCircleHelper(x2, baseY + eyeR/2 + 1, eyeR/2, 0x0C, ST7735_BLACK);
   }
 }
 
@@ -564,22 +686,62 @@ void loop() {
 
   // ----------------------------
   // Смена эмоций и параметров глаз
-  if (millis() - lastEmotionChange > 10000) {
-      // Пул эмоций с повышенным шансом на "милые"
+  if (millis() - lastEmotionChange > 15000) {
+      // Расширенный пул эмоций с акцентом на позитив и дружелюбие
       EyeEmotion emotionsPool[] = {
-        E_NEUTRAL, E_NEUTRAL,       // Нейтральные
-        E_HAPPY, E_HAPPY, E_HAPPY,  // Счастливые (х3 шанс)
-        E_SURPRISE,                 // Удивление
-        E_LOOK_LEFT, E_LOOK_RIGHT, E_LOOK_UP, E_LOOK_DOWN, // Взгляд
-        E_SLEEPY,                   // Сонные
-        E_ANGRY                     // Сердитые (вернули!)
+          // 💖 ПОЗИТИВНЫЕ (40% — чаще всего!)
+          E_HAPPY, E_HAPPY, E_HAPPY, E_HAPPY,    // Счастливый (х4)
+          E_IN_LOVE, E_IN_LOVE,                  // Влюблённый (х2)
+          E_WINK_LEFT, E_WINK_RIGHT,             // Подмигивания (х2)
+          
+          // 😐 НЕЙТРАЛЬНЫЕ / ВЗГЛЯД (30% — умеренно)
+          E_NEUTRAL, E_NEUTRAL,                  // Нейтральный (х2)
+          E_LOOK_LEFT, E_LOOK_RIGHT,             // Взгляд в стороны
+          E_LOOK_UP, E_LOOK_DOWN,                // Взгляд вверх/вниз
+          
+          // 😮 УДИВЛЕНИЕ (10% — для динамики)
+          E_SURPRISE, E_SURPRISE,                // Удивлённый (х2)
+          
+          // 😴 НЕГАТИВ / УСТАЛОСТЬ (20% — редко, но естественно)
+          E_TIRED,                               // Уставший (лёгкий прищур)
+          E_SLEEPY,                              // Сонный (полный прищур)
+          E_ANGRY,                               // Злой (редко!)
+          E_SAD                                  // Грустный (редко!)
       };
-      currentEmotion = emotionsPool[random(sizeof(emotionsPool)/sizeof(EyeEmotion))];
       
-      // Обновляем параметры глаз только при смене эмоции
-      currentEyeR = random(13, 16);
-      currentPupilR = random(4, 6);
-      currentSpacing = random(60, 70);
+      // Выбираем случайную эмоцию из пула
+      currentEmotion = emotionsPool[random(sizeof(emotionsPool) / sizeof(EyeEmotion))];
+      
+      // Подстраиваем параметры глаз под эмоцию для большей выразительности
+      switch (currentEmotion) {
+          case E_SURPRISE:
+              currentEyeR = random(16, 19);   // Большие глаза от удивления
+              currentPupilR = random(2, 3);   // Крошечные зрачки
+              currentSpacing = random(65, 72); // Глаза чуть расширяются
+              break;
+          case E_ANGRY:
+              currentEyeR = random(12, 14);   // Узкие "сердитые" глаза
+              currentPupilR = random(3, 5);
+              currentSpacing = random(58, 65); // Глаза сближаются
+              break;
+          case E_IN_LOVE:
+              currentEyeR = random(14, 16);
+              currentPupilR = random(5, 7);   // Большие "влюблённые" зрачки
+              currentSpacing = random(62, 68);
+              break;
+          case E_SLEEPY:
+          case E_TIRED:
+              currentEyeR = random(13, 15);
+              currentPupilR = random(3, 4);   // Маленькие зрачки при усталости
+              currentSpacing = random(60, 66);
+              break;
+          default:
+              // Стандартные параметры для остальных эмоций
+              currentEyeR = random(13, 16);
+              currentPupilR = random(4, 6);
+              currentSpacing = random(60, 70);
+              break;
+      }
 
       lastEmotionChange = millis();
   }
@@ -590,7 +752,7 @@ void loop() {
     blinkUntil = millis() + 120; // 120 мс = прищур
   } else if (blinkNow && millis() > blinkUntil) {
       blinkNow = false;
-      blinkUntil = millis() + 3000; // следующее моргание через 3 сек
+      blinkUntil = millis() + 10000; // следующее моргание через 3 сек
   }
   // ----------------------------
 
