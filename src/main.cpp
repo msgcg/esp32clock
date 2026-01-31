@@ -182,21 +182,27 @@ void updateThemeByEnv() {
 }
 
 void updateTime() {
-  static unsigned long leftover = 0; // остаток миллисекунд от предыдущего цикла
   unsigned long now = millis();
-  unsigned long delta = now - rtc.lastMillis + leftover;
+  
+  // Вычисляем, сколько времени прошло с последнего зафиксированного тика
+  // Благодаря unsigned long переполнение millis() через 49 дней обрабатывается корректно автоматически
+  unsigned long delta = now - rtc.lastMillis;
 
   if (delta >= 1000) {
-    int secondsPassed = delta / 1000;
-    leftover = delta % 1000;             // сохраняем остаток для следующего раза
-    rtc.lastMillis = now - leftover;     // корректируем базовое время
+    // Считаем, сколько полных секунд прошло (обычно 1, но если код "зависнет", то больше)
+    unsigned long secondsPassed = delta / 1000;
+    
+    // Сдвигаем метку времени ровно на количество прошедших секунд
+    // Это важно: мы не приравниваем к now, а прибавляем 1000, чтобы не накапливать погрешность
+    rtc.lastMillis += (secondsPassed * 1000);
 
     rtc.second += secondsPassed;
 
+    // Стандартная обработка переполнения времени
     while (rtc.second >= 60) {
       rtc.second -= 60;
       rtc.minute++;
-      alarmSkipToday = false;            // сбрасываем флаг пропуска будильника
+      alarmSkipToday = false; 
     }
 
     while (rtc.minute >= 60) {
