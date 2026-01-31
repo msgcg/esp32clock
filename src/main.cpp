@@ -182,19 +182,21 @@ void updateThemeByEnv() {
 }
 
 void updateTime() {
+  static unsigned long leftover = 0; // остаток миллисекунд от предыдущего цикла
   unsigned long now = millis();
-  unsigned long delta = now - rtc.lastMillis;
+  unsigned long delta = now - rtc.lastMillis + leftover;
 
   if (delta >= 1000) {
     int secondsPassed = delta / 1000;
-    rtc.lastMillis += secondsPassed * 1000;
+    leftover = delta % 1000;             // сохраняем остаток для следующего раза
+    rtc.lastMillis = now - leftover;     // корректируем базовое время
 
     rtc.second += secondsPassed;
 
     while (rtc.second >= 60) {
       rtc.second -= 60;
       rtc.minute++;
-      alarmSkipToday = false;
+      alarmSkipToday = false;            // сбрасываем флаг пропуска будильника
     }
 
     while (rtc.minute >= 60) {
@@ -209,6 +211,7 @@ void updateTime() {
     }
   }
 }
+
 
 void checkAlarm() {
   if (rtc.second != 0 || !singleAlarm.active || isRinging || alarmSkipToday) return;
@@ -492,7 +495,21 @@ void handleIR() {
         if(settingField==0) tempRtc.hour = (tempRtc.hour + diff + 24) % 24;
         else tempRtc.minute = (tempRtc.minute + diff + 60) % 60;
       }
-      if (key == IR_BTN_OK) { rtc = tempRtc; currentMode = MODE_CLOCK; showPopup("ОК"); }
+      
+      // --- ИСПРАВЛЕНИЕ ЗДЕСЬ ---
+      if (key == IR_BTN_OK) { 
+        rtc = tempRtc; 
+        
+        // Сбрасываем секунды в 0, чтобы время пошло ровно с новой минуты
+        rtc.second = 0; 
+        
+        // ОБЯЗАТЕЛЬНО: обновляем метку времени на текущий момент
+        rtc.lastMillis = millis(); 
+        
+        currentMode = MODE_CLOCK; 
+        showPopup("Сохранено!"); 
+      }
+      // -------------------------
       break;
     case MODE_SET_ALARM:
       if (key == IR_BTN_PREV) { settingField = (settingField + 2) % 3; digitBuffer = -1; }
