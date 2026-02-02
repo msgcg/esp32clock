@@ -8,7 +8,7 @@
 #include <DHT.h>
 #include "config.h"
 
-// ✅ ПРАВИЛЬНЫЙ МАКРОС ДЛЯ ВАШЕГО ДИСПЛЕЯ (BGR565 + инверсия):
+//ПРАВИЛЬНЫЙ МАКРОС для китайских дисплеев
 #define RGB(r, g, b) (uint16_t)(0xFFFF - ((((b) & 0xF8) << 8) | (((g) & 0xFC) << 3) | ((r) >> 3)))
 
 enum IdleMode { IDLE_EYES, IDLE_QUOTE };
@@ -268,7 +268,7 @@ void toggleLamp() {
 void updateThemeByEnv() {
   int h = rtc.hour;
   
-  // 🌙 ГЛУБОКАЯ НОЧЬ (23:00 - 5:59) — тёплая тема БЕЗ синего спектра
+  // 🌙 ГЛУБОКАЯ НОЧЬ (23:00 - 5:59) — тёплая тема
   if (h >= 23 || h < 6) {
     currentTheme = &thNightWarm;
     return;
@@ -304,7 +304,6 @@ void updateThemeByEnv() {
     return;
   }
   
-  // 🌇 ПОЗДНИЙ ВЕЧЕР (18:00 - 22:59) — уже обработан выше
   currentTheme = &thSpringLight; // fallback
 }
 
@@ -770,7 +769,6 @@ void handleIR() {
         else tempRtc.minute = (tempRtc.minute + diff + 60) % 60;
       }
       
-      // --- ИСПРАВЛЕНИЕ ЗДЕСЬ ---
       if (key == IR_BTN_OK) { 
         rtc = tempRtc; 
         
@@ -785,7 +783,7 @@ void handleIR() {
         currentMode = MODE_CLOCK; 
         showPopup("Сохранено!"); 
       }
-      // -------------------------
+
       break;
     case MODE_SET_ALARM:
       if (key == IR_BTN_PREV) { settingField = (settingField + 2) % 3; digitBuffer = -1; }
@@ -832,7 +830,6 @@ void loop() {
   if (currentMode == MODE_CLOCK && !isRinging && millis() - lastActivity > IDLE_TIMEOUT)
       isIdle = true;
 
-  // ----------------------------
   // Смена эмоций и параметров глаз
   if (millis() - lastEmotionChange > 15000) {
       // Расширенный пул эмоций с акцентом на позитив и дружелюбие
