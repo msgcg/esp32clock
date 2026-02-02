@@ -87,7 +87,6 @@
 
 ```bash
 # Клонирование репозитория
-git clone https://github.com/yourname/esp32-smart-clock.git
 cd esp32-smart-clock
 
 # Установка зависимостей (PlatformIO)
