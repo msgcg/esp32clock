@@ -87,7 +87,7 @@
 
 ```bash
 # Клонирование репозитория
-cd esp32-smart-clock
+cd esp32clock
 
 # Установка зависимостей (PlatformIO)
 pio lib install
