@@ -143,7 +143,7 @@ pio run -t upload --upload-port COMx
 │  🔔 Будильник                │    Подтверждение: 100+
 │  💡 Свет                     │    Выход: EQ
 │  💬 Цитата                   │
-│  🎵 Звук (в разработке)      │
+│    │
 └──────────────────────────────┘
 ```
 
@@ -211,6 +211,3 @@ esp32-smart-clock/
 └── README.md             # Этот файл
 ```
 
-
-[![Звёзды](https://img.shields.io/github/stars/yourname/esp32-smart-clock?style=social)](https://github.com/yourname/esp32-smart-clock)
-[![Лицензия](https://img.shields.io/github/license/yourname/esp32-smart-clock)](LICENSE)
